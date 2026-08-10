@@ -256,4 +256,118 @@ public class ChorusConfigTests : IDisposable
         cfg.SaveSessionId(null);
         Assert.Null(cfg.LoadSessionId());
     }
+
+    // -- wake-word settings ------------------------------------------------
+
+    [Fact]
+    public void Wake_Defaults_Are_Sane()
+    {
+        var d = ChorusConfig.Default;
+        Assert.Equal("hey chorus", d.WakePhrase);
+        Assert.True(d.WakeEnabled);
+        Assert.Equal(0.4f, d.WakeSensitivity);
+        Assert.Equal(2000, d.WakeCooldownMs);
+        Assert.Equal(45000, d.WakeSessionIdleMs);
+        Assert.Equal(d.WakePhrase, d.WakeSettings.Phrase);
+        Assert.True(d.WakeSettings.Enabled);
+        Assert.Equal(0.4f, d.WakeSettings.Sensitivity);
+        Assert.Equal(2000, d.WakeSettings.CooldownMs);
+        Assert.Equal(45000, d.WakeSettings.SessionIdleMs);
+    }
+
+    [Fact]
+    public void Wake_Settings_Load_From_File()
+    {
+        File.WriteAllText(Path.Combine(_dir, "chorus.json"), """
+            {
+              "WakePhrase": "hey chorus",
+              "WakeEnabled": false,
+              "WakeSensitivity": 0.8,
+              "WakeCooldownMs": 1500,
+              "WakeSessionIdleMs": 30000
+            }
+            """);
+
+        var cfg = ChorusConfig.Load(_dir);
+        Assert.Equal("hey chorus", cfg.WakePhrase);
+        Assert.False(cfg.WakeEnabled);
+        Assert.Equal(0.8f, cfg.WakeSensitivity);
+        Assert.Equal(1500, cfg.WakeCooldownMs);
+        Assert.Equal(30000, cfg.WakeSessionIdleMs);
+    }
+
+    [Fact]
+    public void Wake_Env_Overrides_File()
+    {
+        File.WriteAllText(Path.Combine(_dir, "chorus.json"), """{ "WakeSensitivity": 0.2 }""");
+
+        Environment.SetEnvironmentVariable("CHORUS_WAKE_PHRASE", "hey chorus");
+        Environment.SetEnvironmentVariable("CHORUS_WAKE_ENABLED", "false");
+        Environment.SetEnvironmentVariable("CHORUS_WAKE_SENSITIVITY", "0.9");
+        Environment.SetEnvironmentVariable("CHORUS_WAKE_COOLDOWN_MS", "700");
+        Environment.SetEnvironmentVariable("CHORUS_WAKE_SESSION_IDLE_MS", "20000");
+        try
+        {
+            var cfg = ChorusConfig.Load(_dir);
+            Assert.Equal("hey chorus", cfg.WakePhrase);
+            Assert.False(cfg.WakeEnabled);
+            Assert.Equal(0.9f, cfg.WakeSensitivity);
+            Assert.Equal(700, cfg.WakeCooldownMs);
+            Assert.Equal(20000, cfg.WakeSessionIdleMs);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("CHORUS_WAKE_PHRASE", null);
+            Environment.SetEnvironmentVariable("CHORUS_WAKE_ENABLED", null);
+            Environment.SetEnvironmentVariable("CHORUS_WAKE_SENSITIVITY", null);
+            Environment.SetEnvironmentVariable("CHORUS_WAKE_COOLDOWN_MS", null);
+            Environment.SetEnvironmentVariable("CHORUS_WAKE_SESSION_IDLE_MS", null);
+        }
+    }
+
+    [Fact]
+    public void Wake_OutOfRange_Values_Are_Clamped()
+    {
+        File.WriteAllText(Path.Combine(_dir, "chorus.json"), """
+            {
+              "WakeSensitivity": 7.5,
+              "WakeCooldownMs": -50,
+              "WakeSessionIdleMs": -1
+            }
+            """);
+
+        var cfg = ChorusConfig.Load(_dir);
+        Assert.Equal(1f, cfg.WakeSensitivity);   // clamped to [0,1]
+        Assert.Equal(0, cfg.WakeCooldownMs);     // clamped to >= 0
+        Assert.Equal(0, cfg.WakeSessionIdleMs);  // clamped to >= 0
+    }
+
+    [Fact]
+    public void Old_Config_Without_Wake_Fields_Keeps_Defaults()
+    {
+        // Backward compat: a chorus.json from an earlier build has no wake
+        // fields — they must resolve to the built-in defaults (wake ON).
+        File.WriteAllText(Path.Combine(_dir, "chorus.json"), """{ "GatewayUrl": "ws://example.test:9999/v1/session" }""");
+
+        var cfg = ChorusConfig.Load(_dir);
+        Assert.True(cfg.WakeEnabled);
+        Assert.Equal("hey chorus", cfg.WakePhrase);
+        Assert.Equal(0.4f, cfg.WakeSensitivity);
+        Assert.Equal(2000, cfg.WakeCooldownMs);
+    }
+
+    [Fact]
+    public void Wake_RoundTrip_Json_Preserves_Values()
+    {
+        var cfg = new ChorusConfig("ws://rt:1", "a2", "", true, 20, "desktop-win", "/tmp/x.json",
+            "Ctrl+Shift+Space", "Win+Shift+W", "Win+Shift+R",
+            "hey chorus", false, 0.7f, 1200, 60000);
+        var back = ChorusConfig.FromJson(cfg.ToJson());
+
+        Assert.Equal("hey chorus", back.WakePhrase);
+        Assert.False(back.WakeEnabled);
+        Assert.Equal(0.7f, back.WakeSensitivity);
+        Assert.Equal(1200, back.WakeCooldownMs);
+        Assert.Equal(60000, back.WakeSessionIdleMs);
+    }
 }

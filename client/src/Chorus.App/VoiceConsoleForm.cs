@@ -18,6 +18,7 @@ public sealed class VoiceConsoleForm : Form
     private readonly ComboBox _agentCombo;
     private readonly CheckBox _pinCheck;
     private readonly CheckBox _muteCheck;
+    private readonly CheckBox _wakeCheck;
     private readonly Button _reconnectButton;
     private readonly Button _readScreenButton;
     private readonly Label _turnIndicator;
@@ -37,10 +38,15 @@ public sealed class VoiceConsoleForm : Form
     /// <summary>Raised when the user clicks "Read Screen" in the console.</summary>
     public event Action? ReadScreenRequested;
 
+    /// <summary>Raised when the user toggles the "Wake" checkbox (continuous wake-word listening).</summary>
+    public event Action<bool>? WakeToggleRequested;
+
     public VoiceConsoleForm(ChorusClient client, SessionState state, TrayDaemon tray,
         string pttHotkeyDisplay = "Ctrl+Shift+Space",
         string wakeHotkeyDisplay = "Win+Shift+W",
-        string textSelectHotkeyDisplay = "Win+Shift+R")
+        string textSelectHotkeyDisplay = "Win+Shift+R",
+        bool wakeEnabled = true,
+        string wakePhrase = "hey chorus")
     {
         _client = client;
         _state = state;
@@ -57,8 +63,9 @@ public sealed class VoiceConsoleForm : Form
 
         // --- top bar: connection + agent + actions ---
         var top = new TableLayoutPanel { Dock = DockStyle.Top, Height = 40, Padding = new Padding(8, 6, 8, 2) };
-        top.ColumnCount = 6;
+        top.ColumnCount = 7;
         top.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        top.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         top.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         top.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         top.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
@@ -72,6 +79,8 @@ public sealed class VoiceConsoleForm : Form
         _pinCheck.CheckedChanged += (_, _) => TopMost = _pinCheck.Checked;
         _muteCheck = new CheckBox { Text = "Mute", AutoSize = true, Anchor = AnchorStyles.Right };
         _muteCheck.CheckedChanged += (_, _) => _state.Muted = _muteCheck.Checked;
+        _wakeCheck = new CheckBox { Text = "Wake", AutoSize = true, Anchor = AnchorStyles.Right, Checked = wakeEnabled };
+        _wakeCheck.CheckedChanged += (_, _) => WakeToggleRequested?.Invoke(_wakeCheck.Checked);
         _reconnectButton = new Button { Text = "Reconnect", AutoSize = true, Anchor = AnchorStyles.Right };
         _reconnectButton.Click += (_, _) => _state.ReconnectRequested = true;
         _readScreenButton = new Button { Text = "Read Screen", AutoSize = true, Anchor = AnchorStyles.Right };
@@ -81,8 +90,9 @@ public sealed class VoiceConsoleForm : Form
         top.Controls.Add(_agentCombo, 1, 0);
         top.Controls.Add(_pinCheck, 2, 0);
         top.Controls.Add(_muteCheck, 3, 0);
-        top.Controls.Add(_readScreenButton, 4, 0);
-        top.Controls.Add(_reconnectButton, 5, 0);
+        top.Controls.Add(_wakeCheck, 4, 0);
+        top.Controls.Add(_readScreenButton, 5, 0);
+        top.Controls.Add(_reconnectButton, 6, 0);
 
         // --- turn indicator ---
         _turnIndicator = new Label
@@ -122,7 +132,7 @@ public sealed class VoiceConsoleForm : Form
         {
             Dock = DockStyle.Bottom,
             Height = 22,
-            Text = $"Hold {_pttHotkeyDisplay} to talk  ·  {_wakeHotkeyDisplay} wake  ·  {_textSelectHotkeyDisplay} reads screen text  ·  close hides to tray",
+            Text = $"Hold {_pttHotkeyDisplay} to talk  ·  say \"{wakePhrase}\" or {_wakeHotkeyDisplay} to wake  ·  {_textSelectHotkeyDisplay} reads screen text  ·  close hides to tray",
             ForeColor = Color.FromArgb(130, 130, 130),
             Font = new Font("Segoe UI", 8.5f),
             TextAlign = ContentAlignment.MiddleLeft,

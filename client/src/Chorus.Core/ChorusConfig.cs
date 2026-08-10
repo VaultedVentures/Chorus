@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Chorus.Core.WakeWord;
 
 namespace Chorus.Core;
 
@@ -25,7 +26,12 @@ public sealed record ChorusConfig(
     string? ConfigPath,
     string PttHotkey = "Ctrl+Shift+Space",
     string WakeHotkey = "Win+Shift+W",
-    string TextSelectHotkey = "Win+Shift+R")
+    string TextSelectHotkey = "Win+Shift+R",
+    string WakePhrase = "hey chorus",
+    bool WakeEnabled = true,
+    float WakeSensitivity = 0.4f,
+    int WakeCooldownMs = 2000,
+    int WakeSessionIdleMs = 45000)
 {
     public const string FileName = "chorus.json";
 
@@ -38,8 +44,13 @@ public sealed record ChorusConfig(
         ClientDevice: "desktop-win",
         ConfigPath: null,
         PttHotkey: "Ctrl+Shift+Space",   // hold-to-talk (global, works from any app)
-        WakeHotkey: "Win+Shift+W",       // wake-word window
-        TextSelectHotkey: "Win+Shift+R"); // read screen text
+        WakeHotkey: "Win+Shift+W",       // manual wake window (hotkey path)
+        TextSelectHotkey: "Win+Shift+R", // read screen text
+        WakePhrase: "hey chorus",        // wake-word phrase (acoustic model is fixed)
+        WakeEnabled: true,               // continuous wake-word listening on startup
+        WakeSensitivity: 0.4f,           // 0..1: higher triggers more easily
+        WakeCooldownMs: 2000,            // min gap between wake triggers (ms)
+        WakeSessionIdleMs: 45000);       // wake session auto-closes after this silence
 
     /// <summary>Parsed PTT binding; invalid config falls back to the default.</summary>
     public HotkeyBinding PttBinding => HotkeyBinding.Parse(PttHotkey).IsValid
@@ -65,6 +76,14 @@ public sealed record ChorusConfig(
     /// <summary>Human-readable text-select combo, e.g. "Win+Shift+R".</summary>
     public string TextSelectHotkeyDisplay => TextSelectBinding.Display;
 
+    /// <summary>Wake-word engine settings assembled from the config fields.</summary>
+    public WakeWordSettings WakeSettings => new(
+        Phrase: WakePhrase,
+        Enabled: WakeEnabled,
+        Sensitivity: WakeSensitivity,
+        CooldownMs: WakeCooldownMs,
+        SessionIdleMs: WakeSessionIdleMs);
+
     /// <summary>Env override names, in the order the loader applies them.</summary>
     public static readonly (string Env, string Field)[] EnvOverrides =
     {
@@ -75,6 +94,11 @@ public sealed record ChorusConfig(
         ("CHORUS_PTT_HOTKEY", nameof(PttHotkey)),
         ("CHORUS_WAKE_HOTKEY", nameof(WakeHotkey)),
         ("CHORUS_TEXT_SELECT_HOTKEY", nameof(TextSelectHotkey)),
+        ("CHORUS_WAKE_PHRASE", nameof(WakePhrase)),
+        ("CHORUS_WAKE_ENABLED", nameof(WakeEnabled)),
+        ("CHORUS_WAKE_SENSITIVITY", nameof(WakeSensitivity)),
+        ("CHORUS_WAKE_COOLDOWN_MS", nameof(WakeCooldownMs)),
+        ("CHORUS_WAKE_SESSION_IDLE_MS", nameof(WakeSessionIdleMs)),
     };
 
     /// <summary>
@@ -103,7 +127,7 @@ public sealed record ChorusConfig(
         {
             try
             {
-                cfg = FromJson(raw) with { ConfigPath = path };
+                cfg = Normalize(FromJson(raw)) with { ConfigPath = path };
             }
             catch (Exception)
             {
@@ -118,6 +142,19 @@ public sealed record ChorusConfig(
 
         return ApplyEnvOverrides(cfg);
     }
+
+    /// <summary>
+    /// Clamp numeric settings read from the JSON file. The env override path
+    /// clamps at parse time; the file path deserializes raw values, so an
+    /// out-of-range chorus.json (e.g. "WakeSensitivity": 7.5) must be brought
+    /// back in range here — the engine and UI both assume valid ranges.
+    /// </summary>
+    private static ChorusConfig Normalize(ChorusConfig cfg) => cfg with
+    {
+        WakeSensitivity = Math.Clamp(cfg.WakeSensitivity, 0f, 1f),
+        WakeCooldownMs = Math.Max(0, cfg.WakeCooldownMs),
+        WakeSessionIdleMs = Math.Max(0, cfg.WakeSessionIdleMs),
+    };
 
     public static ChorusConfig FromJson(string json) =>
         JsonSerializer.Deserialize<ChorusConfig>(json, JsonOpts) ?? Default;
@@ -140,6 +177,11 @@ public sealed record ChorusConfig(
         string? ptt = Environment.GetEnvironmentVariable("CHORUS_PTT_HOTKEY");
         string? wake = Environment.GetEnvironmentVariable("CHORUS_WAKE_HOTKEY");
         string? textSelect = Environment.GetEnvironmentVariable("CHORUS_TEXT_SELECT_HOTKEY");
+        string? wakePhrase = Environment.GetEnvironmentVariable("CHORUS_WAKE_PHRASE");
+        string? wakeEnabled = Environment.GetEnvironmentVariable("CHORUS_WAKE_ENABLED");
+        string? wakeSensitivity = Environment.GetEnvironmentVariable("CHORUS_WAKE_SENSITIVITY");
+        string? wakeCooldown = Environment.GetEnvironmentVariable("CHORUS_WAKE_COOLDOWN_MS");
+        string? wakeSessionIdle = Environment.GetEnvironmentVariable("CHORUS_WAKE_SESSION_IDLE_MS");
 
         if (url is not null && url.Length > 0) cfg = cfg with { GatewayUrl = url };
         if (agent is not null && agent.Length > 0) cfg = cfg with { Agent = agent };
@@ -151,6 +193,16 @@ public sealed record ChorusConfig(
             cfg = cfg with { WakeHotkey = wake };
         if (textSelect is not null && textSelect.Length > 0 && HotkeyBinding.TryParse(textSelect, out _))
             cfg = cfg with { TextSelectHotkey = textSelect };
+        if (wakePhrase is not null && wakePhrase.Length > 0)
+            cfg = cfg with { WakePhrase = wakePhrase };
+        if (wakeEnabled is not null && bool.TryParse(wakeEnabled, out bool we))
+            cfg = cfg with { WakeEnabled = we };
+        if (wakeSensitivity is not null && float.TryParse(wakeSensitivity, out float ws))
+            cfg = cfg with { WakeSensitivity = Math.Clamp(ws, 0f, 1f) };
+        if (wakeCooldown is not null && int.TryParse(wakeCooldown, out int wc))
+            cfg = cfg with { WakeCooldownMs = Math.Max(0, wc) };
+        if (wakeSessionIdle is not null && int.TryParse(wakeSessionIdle, out int wsi))
+            cfg = cfg with { WakeSessionIdleMs = Math.Max(0, wsi) };
         return cfg;
     }
 

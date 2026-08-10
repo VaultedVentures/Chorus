@@ -22,4 +22,9 @@
     <ProjectReference Include="..\..\src\Chorus.Core\Chorus.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Python-computed MFCC of the canonical utterance (contract fixture). -->
+    <EmbeddedResource Include="Fixtures\canonical_mfcc.json" />
+  </ItemGroup>
+
 </Project>

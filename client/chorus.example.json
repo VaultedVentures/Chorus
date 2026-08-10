@@ -7,5 +7,10 @@
   "ClientDevice": "desktop-win",
   "PttHotkey": "Ctrl+Shift+Space",
   "WakeHotkey": "Win+Shift+W",
-  "TextSelectHotkey": "Win+Shift+R"
+  "TextSelectHotkey": "Win+Shift+R",
+  "WakePhrase": "hey chorus",
+  "WakeEnabled": true,
+  "WakeSensitivity": 0.4,
+  "WakeCooldownMs": 2000,
+  "WakeSessionIdleMs": 45000
 }
