@@ -232,7 +232,8 @@ public sealed class VoiceConsoleForm : Form
         _turnIndicator.BackColor = color;
     }
 
-    private void AppendLine(string text, Color color)
+    /// <summary>Append a line to the transcript (thread-safe; called from anywhere).</summary>
+    public void AppendLine(string text, Color color)
     {
         if (InvokeRequired) { BeginInvoke(() => AppendLine(text, color)); return; }
         _transcript.SelectionStart = _transcript.TextLength;

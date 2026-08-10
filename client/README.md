@@ -56,10 +56,26 @@ dotnet run --project tests/Chorus.Smoke -- --wav test-input-16k-mono.wav   # ful
 
 ## Config
 
-| Env var      | Default                                  | Meaning                  |
-|--------------|------------------------------------------|--------------------------|
-| `CHORUS_URL` | `ws://2.28.14.119:8765/v1/session`       | Gateway endpoint         |
-| `CHORUS_AGENT` | `hermes`                               | Default agent id         |
+Configuration is loaded from `chorus.json` next to the EXE (a default file is
+written on first run; see `chorus.example.json`). Environment variables
+override the file. Precedence: env var > config file > built-in default.
+
+| Field           | Env var              | Default                              | Meaning                        |
+|-----------------|----------------------|--------------------------------------|--------------------------------|
+| `GatewayUrl`    | `CHORUS_URL`         | `ws://2.28.14.119:8765/v1/session`   | Gateway endpoint               |
+| `Agent`         | `CHORUS_AGENT`       | `hermes`                             | Default agent id               |
+| `MicDevice`     | `CHORUS_DEVICE`      | `""` (system default)                | Mic device: `""`, index (`"3"`), or name substring (`"USB Audio"`) |
+| `StartHidden`   | `CHORUS_START_HIDDEN`| `true`                               | Start to tray with no main window (console via tray menu) |
+| `MicBufferMs`   | —                    | `20`                                 | Capture frame size (20 ms @ 16 kHz = 320 samples) |
+| `ClientDevice`  | —                    | `desktop-win`                        | Device id sent in the hello handshake |
 
 The session id is persisted as `session.id` next to the EXE so reconnects and
 restarts resume the same gateway session.
+
+## Microphone permission
+
+On startup the app probes the microphone. If Windows blocks mic access
+(privacy settings) or no input device exists, the failure is surfaced
+immediately: a tray balloon, a red status line in the console transcript, and
+the tray tooltip. Fix in Windows Settings → Privacy & security → Microphone,
+then retry via the tray menu.

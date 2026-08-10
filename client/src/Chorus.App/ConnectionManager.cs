@@ -10,14 +10,14 @@ namespace Chorus.App;
 public sealed class ConnectionManager
 {
     private readonly ChorusClient _client;
-    private readonly AppSettings _settings;
+    private readonly ChorusConfig _settings;
     private readonly VoiceConsoleForm _form;
     private readonly TrayDaemon _tray;
     private readonly SessionState _state;
     private CancellationTokenSource? _attemptCts;
     private volatile bool _reconnectRequested;
 
-    public ConnectionManager(ChorusClient client, AppSettings settings,
+    public ConnectionManager(ChorusClient client, ChorusConfig settings,
         VoiceConsoleForm form, TrayDaemon tray, SessionState state)
     {
         _client = client;
@@ -45,7 +45,7 @@ public sealed class ConnectionManager
             {
                 _form.SetConnection("connecting…");
                 await _client.ConnectAsync(
-                    _settings.LoadSessionId() ?? "", _settings.Device, "converse",
+                    _settings.LoadSessionId() ?? "", _settings.ClientDevice, "converse",
                     _state.Agent, attemptCts.Token);
 
                 _settings.SaveSessionId(_client.SessionId);

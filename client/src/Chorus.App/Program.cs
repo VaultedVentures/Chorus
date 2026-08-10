@@ -2,6 +2,30 @@ using Chorus.Core;
 
 namespace Chorus.App;
 
+/// <summary>
+/// ApplicationContext that lets the app start WITHOUT a visible main window:
+/// the form is created (its handle is forced so global hotkeys work) but not
+/// shown until the tray's "Show Console" is used. The tray owns the loop.
+/// </summary>
+internal sealed class TrayApplicationContext : ApplicationContext
+{
+    private readonly VoiceConsoleForm _form;
+
+    public TrayApplicationContext(VoiceConsoleForm form, bool startHidden)
+    {
+        _form = form;
+        if (!startHidden) ShowConsole();
+        else _ = form.Handle; // force handle creation → hotkeys register now
+    }
+
+    public void ShowConsole()
+    {
+        _form.Show();
+        _form.WindowState = FormWindowState.Normal;
+        _form.Activate();
+    }
+}
+
 internal static class Program
 {
     private const string MutexName = "ChorusVoiceClient_SingleInstance_v1";
@@ -15,6 +39,7 @@ internal static class Program
     private static VoiceConsoleForm _form = null!;
     private static TrayDaemon _tray = null!;
     private static SessionState _state = null!;
+    private static TrayApplicationContext _appContext = null!;
     private static SynchronizationContext? _ui;
 
     // Capture mode + wake VAD state (audio thread owns these).
@@ -35,14 +60,20 @@ internal static class Program
         }
 
         ApplicationConfiguration.Initialize();
-        _ui = SynchronizationContext.Current;
 
-        var settings = AppSettings.Load();
+        var settings = ChorusConfig.Load();
         _state = new SessionState();
         _client = new ChorusClient(settings.GatewayUrl);
-        _audio = new AudioEngine();
+        _audio = new AudioEngine(settings);
         _tray = new TrayDaemon();
         _form = new VoiceConsoleForm(_client, _state, _tray);
+        _appContext = new TrayApplicationContext(_form, settings.StartHidden);
+
+        // The WinForms sync context is installed when the first control handle
+        // is created (above). Capture it AFTER that, or _ui.Post would NPE.
+        // Fallback: a fresh WindowsFormsSynchronizationContext posts to this
+        // thread's message queue, which Application.Run pumps below.
+        _ui = SynchronizationContext.Current ?? new WindowsFormsSynchronizationContext();
 
         using var hotkeys = new GlobalHotkeys();
         hotkeys.Register(_form.Handle);
@@ -50,9 +81,13 @@ internal static class Program
         hotkeys.PttReleased += OnPttReleased;
         hotkeys.WakePressed += OnWakePressed;
 
-        _tray.ShowConsoleRequested += () => ShowConsole();
+        _tray.ShowConsoleRequested += () => _ui!.Post(_ => _appContext.ShowConsole(), null);
         _tray.ReconnectRequested += () => _state.ReconnectRequested = true;
         _tray.QuitRequested += () => _ui!.Post(_ => Shutdown(), null);
+
+        // Mic permission/device failures are surfaced clearly: tray balloon +
+        // status + console line. Never silent.
+        _audio.MicFailed += f => _ui!.Post(_ => OnMicFailure(f), null);
 
         _audio.MicFrameCaptured += OnMicFrame;
         _audio.StartPlayback();
@@ -86,9 +121,26 @@ internal static class Program
         };
         pollTimer.Start();
 
-        Application.Run(_form);
+        // Startup mic probe: surfaces a missing/blocked microphone immediately,
+        // before the user ever presses the hotkey.
+        _ui.Post(_ => ProbeMic(), null);
+
+        Application.Run(_appContext);
         appCts.Cancel();
         _ = _client.DisconnectAsync();
+    }
+
+    private static void ProbeMic()
+    {
+        if (_audio.StartMic()) _audio.StopMic();
+    }
+
+    private static void OnMicFailure(MicFailure f)
+    {
+        _tray.ShowBalloon("CHORUS — microphone unavailable", f.Message);
+        _tray.SetStatus("CHORUS — mic unavailable");
+        _form.AppendLine($"mic: {f.Message}", Color.FromArgb(190, 40, 40));
+        _form.SetConnection("mic unavailable");
     }
 
     // -- hotkeys -----------------------------------------------------------
@@ -200,22 +252,15 @@ internal static class Program
         return Math.Sqrt((double)sum / frame.Length);
     }
 
-    private static void ShowConsole()
-    {
-        _ui!.Post(_ =>
-        {
-            _form.Show();
-            _form.WindowState = FormWindowState.Normal;
-            _form.Activate();
-        }, null);
-    }
-
     private static void Shutdown()
     {
         _pttActive = false;
         _wakeActive = false;
         _audio.StopMic();
         _form.Quit();
+        // Application.Run(TrayApplicationContext) does NOT exit when the form
+        // closes — the context owns the loop, so exit it explicitly.
+        _appContext.ExitThread();
     }
 
     private static async void FireAndForget(Task t)
