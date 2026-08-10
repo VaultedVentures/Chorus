@@ -39,6 +39,7 @@ internal static class Program
     private static VoiceConsoleForm _form = null!;
     private static TrayDaemon _tray = null!;
     private static SessionState _state = null!;
+    private static TextSelectController _textSelect = null!;
     private static TrayApplicationContext _appContext = null!;
     private static SynchronizationContext? _ui;
 
@@ -80,10 +81,16 @@ internal static class Program
         hotkeys.PttPressed += OnPttPressed;
         hotkeys.PttReleased += OnPttReleased;
         hotkeys.WakePressed += OnWakePressed;
+        hotkeys.TextSelectPressed += OnTextSelectPressed;
+
+        _textSelect = new TextSelectController(_form, _tray);
 
         _tray.ShowConsoleRequested += () => _ui!.Post(_ => _appContext.ShowConsole(), null);
         _tray.ReconnectRequested += () => _state.ReconnectRequested = true;
+        _tray.TextSelectRequested += () => _ui!.Post(_ => OnTextSelectPressed(), null);
         _tray.QuitRequested += () => _ui!.Post(_ => Shutdown(), null);
+
+        _form.ReadScreenRequested += OnTextSelectPressed;
 
         // Mic permission/device failures are surfaced clearly: tray balloon +
         // status + console line. Never silent.
@@ -147,6 +154,7 @@ internal static class Program
     private static void OnPttPressed()
     {
         if (_state.Muted) return;
+        _textSelect.StopReading(); // user talking takes priority over screen reading
         if (_wakeActive)
         {
             // PTT takes over from a wake window: close the wake speech first.
@@ -175,11 +183,18 @@ internal static class Program
     private static void OnWakePressed()
     {
         if (_state.Muted || _pttActive) return;
+        _textSelect.StopReading(); // mic takes priority over screen reading
         _wakeActive = true;
         _vadInSpeech = false;
         _vadSilentFrames = 0;
         _audio.StartMic();
         FireAndForget(_client.SendWakeAsync());
+    }
+
+    private static void OnTextSelectPressed()
+    {
+        // Toggle: second press cancels the overlay or stops the reading.
+        _textSelect.Toggle();
     }
 
     // -- mic capture (NAudio thread) ---------------------------------------
@@ -256,6 +271,7 @@ internal static class Program
     {
         _pttActive = false;
         _wakeActive = false;
+        _textSelect.Dispose();
         _audio.StopMic();
         _form.Quit();
         // Application.Run(TrayApplicationContext) does NOT exit when the form

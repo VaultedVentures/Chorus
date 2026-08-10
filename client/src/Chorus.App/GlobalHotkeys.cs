@@ -4,8 +4,9 @@ namespace Chorus.App;
 
 /// <summary>
 /// Global hotkeys via RegisterHotKey: Win+Shift+T = push-to-talk (hold),
-/// Win+Shift+W = wake word window. Works from ANY app, even when the console
-/// window is hidden to the tray.
+/// Win+Shift+W = wake word window, Win+Shift+R = read screen text
+/// (ScreenToTextToSpeech selection). Works from ANY app, even when the
+/// console window is hidden to the tray.
 /// </summary>
 public sealed class GlobalHotkeys : NativeWindow, IDisposable
 {
@@ -15,12 +16,15 @@ public sealed class GlobalHotkeys : NativeWindow, IDisposable
     private const uint ModNoRepeat = 0x4000;
     private const int PttId = 1;
     private const int WakeId = 2;
+    private const int TextSelectId = 3;
     private const char PttKey = 'T';
     private const char WakeKey = 'W';
+    private const char TextSelectKey = 'R';
 
     public event Action? PttPressed;
     public event Action? PttReleased;
     public event Action? WakePressed;
+    public event Action? TextSelectPressed;
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
@@ -36,6 +40,7 @@ public sealed class GlobalHotkeys : NativeWindow, IDisposable
         AssignHandle(hwnd);
         RegisterHotKey(hwnd, PttId, ModWin | ModShift | ModNoRepeat, (uint)char.ToUpperInvariant(PttKey));
         RegisterHotKey(hwnd, WakeId, ModWin | ModShift | ModNoRepeat, (uint)char.ToUpperInvariant(WakeKey));
+        RegisterHotKey(hwnd, TextSelectId, ModWin | ModShift | ModNoRepeat, (uint)char.ToUpperInvariant(TextSelectKey));
     }
 
     protected override void WndProc(ref Message m)
@@ -54,6 +59,10 @@ public sealed class GlobalHotkeys : NativeWindow, IDisposable
             {
                 WakePressed?.Invoke();
             }
+            else if (id == TextSelectId)
+            {
+                TextSelectPressed?.Invoke();
+            }
         }
         base.WndProc(ref m);
     }
@@ -64,6 +73,7 @@ public sealed class GlobalHotkeys : NativeWindow, IDisposable
         {
             UnregisterHotKey(Handle, PttId);
             UnregisterHotKey(Handle, WakeId);
+            UnregisterHotKey(Handle, TextSelectId);
         }
         ReleaseHandle();
     }

@@ -11,6 +11,11 @@ The CHORUS desktop SysTray voice client (Scott-approved two-surface design):
 2. **SysTray daemon** — owns the global hotkeys, the mic, auto-reconnect and
    status. Win+Shift+T = hold-to-talk, Win+Shift+W = wake window. Works from
    ANY app, even with the console hidden.
+3. **Text Select (ScreenToTextToSpeech)** — Win+Shift+R (or tray "Read Screen
+   Text" / console "Read Screen" button) dims the screen; click-drag a
+   rectangle over any text/image; CHORUS OCRs the region with the built-in
+   Windows OCR engine and reads it aloud locally via SAPI. Fully local, no
+   gateway involvement. See `docs/chorus-text-select.md`.
 
 Wire contract: `docs/chorus-protocol-v1.md` — binary frames are OPUS audio
 only; text frames are JSON events only. The receive-loop branch that enforces
@@ -39,12 +44,16 @@ Deployable: `dist/win-x64/Chorus.exe` — copy to Windows and run.
 ## Verify
 
 ```bash
-# unit tests (protocol parsing + opus codec)
+# unit tests (protocol parsing + opus codec + screen-text pipeline)
 dotnet test tests/Chorus.Core.Tests
 
 # smoke against the live gateway (no Windows needed)
 dotnet run --project tests/Chorus.Smoke -- --url ws://2.28.14.119:8765/v1/session
 dotnet run --project tests/Chorus.Smoke -- --wav test-input-16k-mono.wav   # full PTT exchange
+
+# screen-text pipeline on Linux (PIL render -> tesseract OCR -> clean/chunk;
+# WinRT OCR itself is Windows-only)
+python3 tests/textselect_pipeline_check.py
 ```
 
 > Linux note: the Concentus native loader dlopens `libopus.so` directly (it does

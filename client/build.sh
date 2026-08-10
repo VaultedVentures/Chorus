@@ -22,7 +22,7 @@ dotnet publish src/Chorus.App/Chorus.App.csproj \
 
 echo
 echo ">>> Copying native opus.dll next to the EXE (raw LoadLibrary path) ..."
-OPUS_SRC="src/Chorus.App/bin/${CONFIG}/net9.0-windows/${RID}/runtimes/${RID}/native/opus.dll"
+OPUS_SRC="src/Chorus.App/bin/${CONFIG}/net9.0-windows10.0.19041.0/${RID}/runtimes/${RID}/native/opus.dll"
 if [ -f "$OPUS_SRC" ]; then
   cp "$OPUS_SRC" "dist/${RID}/opus.dll"
   echo "    dist/${RID}/opus.dll"

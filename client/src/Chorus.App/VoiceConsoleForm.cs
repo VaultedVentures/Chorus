@@ -19,6 +19,7 @@ public sealed class VoiceConsoleForm : Form
     private readonly CheckBox _pinCheck;
     private readonly CheckBox _muteCheck;
     private readonly Button _reconnectButton;
+    private readonly Button _readScreenButton;
     private readonly Label _turnIndicator;
     private readonly RichTextBox _transcript;
     private readonly Label _captionLabel;
@@ -28,6 +29,9 @@ public sealed class VoiceConsoleForm : Form
     private DateTime _pendingEnd;
     private string _pendingVerdict = "";
     private bool _quitting;
+
+    /// <summary>Raised when the user clicks "Read Screen" in the console.</summary>
+    public event Action? ReadScreenRequested;
 
     public VoiceConsoleForm(ChorusClient client, SessionState state, TrayDaemon tray)
     {
@@ -43,8 +47,9 @@ public sealed class VoiceConsoleForm : Form
 
         // --- top bar: connection + agent + actions ---
         var top = new TableLayoutPanel { Dock = DockStyle.Top, Height = 40, Padding = new Padding(8, 6, 8, 2) };
-        top.ColumnCount = 5;
+        top.ColumnCount = 6;
         top.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        top.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         top.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         top.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         top.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
@@ -59,12 +64,15 @@ public sealed class VoiceConsoleForm : Form
         _muteCheck.CheckedChanged += (_, _) => _state.Muted = _muteCheck.Checked;
         _reconnectButton = new Button { Text = "Reconnect", AutoSize = true, Anchor = AnchorStyles.Right };
         _reconnectButton.Click += (_, _) => _state.ReconnectRequested = true;
+        _readScreenButton = new Button { Text = "Read Screen", AutoSize = true, Anchor = AnchorStyles.Right };
+        _readScreenButton.Click += (_, _) => ReadScreenRequested?.Invoke();
 
         top.Controls.Add(_connectionLabel, 0, 0);
         top.Controls.Add(_agentCombo, 1, 0);
         top.Controls.Add(_pinCheck, 2, 0);
         top.Controls.Add(_muteCheck, 3, 0);
-        top.Controls.Add(_reconnectButton, 4, 0);
+        top.Controls.Add(_readScreenButton, 4, 0);
+        top.Controls.Add(_reconnectButton, 5, 0);
 
         // --- turn indicator ---
         _turnIndicator = new Label
@@ -104,7 +112,7 @@ public sealed class VoiceConsoleForm : Form
         {
             Dock = DockStyle.Bottom,
             Height = 22,
-            Text = "Hold Win+Shift+T to talk  ·  Win+Shift+W opens the wake window  ·  close hides to tray",
+            Text = "Hold Win+Shift+T to talk  ·  Win+Shift+W wake  ·  Win+Shift+R reads screen text  ·  close hides to tray",
             ForeColor = Color.FromArgb(130, 130, 130),
             Font = new Font("Segoe UI", 8.5f),
             TextAlign = ContentAlignment.MiddleLeft,
@@ -242,6 +250,12 @@ public sealed class VoiceConsoleForm : Form
         _transcript.AppendText(text + Environment.NewLine);
         _transcript.SelectionStart = _transcript.TextLength;
         _transcript.ScrollToCaret();
+    }
+
+    /// <summary>Append a local system/feature line (screen text reads, status) to the transcript.</summary>
+    public void AppendSystem(string text)
+    {
+        AppendLine($"— {text} —", Color.FromArgb(130, 130, 130));
     }
 
     private void OnFormClosing(object? sender, FormClosingEventArgs e)
