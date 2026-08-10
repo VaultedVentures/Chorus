@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Drawing.Drawing2D;
 using Chorus.Core.ScreenText;
 
@@ -23,6 +24,12 @@ public sealed class TextSelectOverlayForm : Form
     private bool _dragging;
 
     /// <summary>Selected region in PHYSICAL screen pixels, or null if cancelled.</summary>
+    // The overlay's selection result, read by TextSelectController after ShowDialog.
+    // Browsable(false) + Hidden keep the WinForms designer-serialization analyzer
+    // (WFO1000) from rejecting the custom ScreenRect? type — the property is
+    // runtime-only state, never designer content. (Loretta 2026-08-11 rework ask.)
+    [Browsable(false)]
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public ScreenRect? SelectedRegion { get; private set; }
 
     public TextSelectOverlayForm(Bitmap desktopSnapshot)
