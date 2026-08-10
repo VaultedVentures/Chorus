@@ -26,6 +26,123 @@ public class ChorusConfigTests : IDisposable
         Assert.Equal("", d.MicDevice);
         Assert.True(d.StartHidden, "default should start to tray without a main window");
         Assert.Equal(20, d.MicBufferMs);
+        Assert.Equal("Ctrl+Shift+Space", d.PttHotkey);
+        Assert.Equal("Win+Shift+W", d.WakeHotkey);
+        Assert.Equal("Win+Shift+R", d.TextSelectHotkey);
+    }
+
+    [Fact]
+    public void Hotkey_Display_Helpers_Parse_Defaults()
+    {
+        var d = ChorusConfig.Default;
+        Assert.Equal("Ctrl+Shift+Space", d.PttHotkeyDisplay);
+        Assert.Equal("Win+Shift+W", d.WakeHotkeyDisplay);
+        Assert.Equal("Win+Shift+R", d.TextSelectHotkeyDisplay);
+        Assert.True(d.PttBinding.IsValid);
+        Assert.Equal(HotkeyBinding.ModControl | HotkeyBinding.ModShift, d.PttBinding.Modifiers);
+        Assert.Equal(0x20u, d.PttBinding.VirtualKey);
+    }
+
+    [Fact]
+    public void Invalid_Hotkey_Config_Falls_Back_To_Default_Binding()
+    {
+        string path = Path.Combine(_dir, "chorus.json");
+        File.WriteAllText(path, """
+            {
+              "GatewayUrl": "ws://example.test:9999/v1/session",
+              "PttHotkey": "Ctrl+Banana",
+              "WakeHotkey": "F1",
+              "TextSelectHotkey": ""
+            }
+            """);
+
+        var cfg = ChorusConfig.Load(_dir);
+        Assert.Equal("Ctrl+Shift+Space", cfg.PttHotkeyDisplay, ignoreCase: true);
+        Assert.Equal("Win+Shift+W", cfg.WakeHotkeyDisplay, ignoreCase: true);
+        Assert.Equal("Win+Shift+R", cfg.TextSelectHotkeyDisplay, ignoreCase: true);
+    }
+
+    [Fact]
+    public void Custom_Hotkeys_Load_From_File()
+    {
+        string path = Path.Combine(_dir, "chorus.json");
+        File.WriteAllText(path, """
+            {
+              "GatewayUrl": "ws://example.test:9999/v1/session",
+              "PttHotkey": "Alt+F9",
+              "WakeHotkey": "Ctrl+Shift+W",
+              "TextSelectHotkey": "Ctrl+Shift+S"
+            }
+            """);
+
+        var cfg = ChorusConfig.Load(_dir);
+        Assert.Equal("Alt+F9", cfg.PttHotkeyDisplay);
+        Assert.Equal("Ctrl+Shift+W", cfg.WakeHotkeyDisplay);
+        Assert.Equal("Ctrl+Shift+S", cfg.TextSelectHotkeyDisplay);
+        Assert.Equal(0x78u, cfg.PttBinding.VirtualKey); // F9
+    }
+
+    [Fact]
+    public void Env_Hotkeys_Override_File()
+    {
+        string path = Path.Combine(_dir, "chorus.json");
+        File.WriteAllText(path, """{ "PttHotkey": "Alt+F9" }""");
+
+        Environment.SetEnvironmentVariable("CHORUS_PTT_HOTKEY", "Ctrl+Shift+F12");
+        Environment.SetEnvironmentVariable("CHORUS_WAKE_HOTKEY", "Alt+Space");
+        try
+        {
+            var cfg = ChorusConfig.Load(_dir);
+            Assert.Equal("Ctrl+Shift+F12", cfg.PttHotkeyDisplay);
+            Assert.Equal("Alt+Space", cfg.WakeHotkeyDisplay);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("CHORUS_PTT_HOTKEY", null);
+            Environment.SetEnvironmentVariable("CHORUS_WAKE_HOTKEY", null);
+        }
+    }
+
+    [Fact]
+    public void Old_Config_Without_Hotkey_Fields_Keeps_Defaults()
+    {
+        // Backward compat: a chorus.json written by an earlier CHORUS build
+        // has no hotkey fields — they must resolve to the built-in defaults,
+        // not null (which would break the display helpers / RegisterHotKey).
+        string path = Path.Combine(_dir, "chorus.json");
+        File.WriteAllText(path, """
+            {
+              "GatewayUrl": "ws://example.test:9999/v1/session",
+              "Agent": "kimi",
+              "MicDevice": "USB Audio",
+              "StartHidden": false,
+              "MicBufferMs": 40
+            }
+            """);
+
+        var cfg = ChorusConfig.Load(_dir);
+        Assert.Equal("Ctrl+Shift+Space", cfg.PttHotkey);
+        Assert.Equal("Win+Shift+W", cfg.WakeHotkey);
+        Assert.Equal("Win+Shift+R", cfg.TextSelectHotkey);
+        Assert.Equal("Ctrl+Shift+Space", cfg.PttHotkeyDisplay);
+    }
+
+    [Fact]
+    public void Env_Invalid_Hotkey_Is_Ignored()
+    {
+        string path = Path.Combine(_dir, "chorus.json");
+        File.WriteAllText(path, """{ "PttHotkey": "Alt+F9" }""");
+
+        Environment.SetEnvironmentVariable("CHORUS_PTT_HOTKEY", "not-a-hotkey");
+        try
+        {
+            var cfg = ChorusConfig.Load(_dir);
+            Assert.Equal("Alt+F9", cfg.PttHotkeyDisplay); // file value survives bad env
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("CHORUS_PTT_HOTKEY", null);
+        }
     }
 
     [Fact]

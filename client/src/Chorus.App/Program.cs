@@ -49,6 +49,17 @@ internal static class Program
     private static volatile bool _vadInSpeech;
     private static int _vadSilentFrames;
 
+    // PTT session accounting for the stream open/close log: frames actually
+    // handed to the encoder during the current hold, and the hold start time.
+    private static int _pttFrameCount;
+    private static DateTime _pttHoldStart;
+    private static string _pttDisplay = "Ctrl+Shift+Space";
+
+    // Last in-flight audio send. On PTT release we await it (bounded) so the
+    // gateway receives every frame before the ptt up closes the stream — the
+    // client-side "flush" half of the release contract.
+    private static volatile Task _lastAudioSend = Task.CompletedTask;
+
     [STAThread]
     private static void Main()
     {
@@ -67,7 +78,8 @@ internal static class Program
         _client = new ChorusClient(settings.GatewayUrl);
         _audio = new AudioEngine(settings);
         _tray = new TrayDaemon();
-        _form = new VoiceConsoleForm(_client, _state, _tray);
+        _form = new VoiceConsoleForm(_client, _state, _tray,
+            settings.PttHotkeyDisplay, settings.WakeHotkeyDisplay, settings.TextSelectHotkeyDisplay);
         _appContext = new TrayApplicationContext(_form, settings.StartHidden);
 
         // The WinForms sync context is installed when the first control handle
@@ -76,12 +88,18 @@ internal static class Program
         // thread's message queue, which Application.Run pumps below.
         _ui = SynchronizationContext.Current ?? new WindowsFormsSynchronizationContext();
 
-        using var hotkeys = new GlobalHotkeys();
+        using var hotkeys = new GlobalHotkeys(settings.PttBinding, settings.WakeBinding, settings.TextSelectBinding);
+        _pttDisplay = settings.PttHotkeyDisplay;
         hotkeys.Register(_form.Handle);
         hotkeys.PttPressed += OnPttPressed;
         hotkeys.PttReleased += OnPttReleased;
         hotkeys.WakePressed += OnWakePressed;
         hotkeys.TextSelectPressed += OnTextSelectPressed;
+        hotkeys.RegistrationFailed += reason => _ui!.Post(_ =>
+        {
+            _tray.ShowBalloon("CHORUS — hotkey unavailable", reason);
+            _form.AppendLine(reason, Color.FromArgb(190, 40, 40));
+        }, null);
 
         _textSelect = new TextSelectController(_form, _tray);
 
@@ -168,16 +186,31 @@ internal static class Program
             _ui!.Post(_ => _audio.ClearPlayback(), null);
         }
         _pttActive = true;
+        _pttFrameCount = 0;
+        _pttHoldStart = DateTime.UtcNow;
         _audio.StartMic();
         FireAndForget(_client.SendPttAsync(true));
+        _tray.SetTransmitting(true);
+        Log($"[ptt] stream OPEN via {_pttDisplay} at {DateTime.Now:HH:mm:ss.fff}");
     }
 
-    private static void OnPttReleased()
+    private static async void OnPttReleased()
     {
         if (!_pttActive) return;
         _pttActive = false;
+
+        // Stop the mic FIRST so no new frames are captured, then flush the
+        // in-flight audio sends (bounded) so the gateway hears every frame
+        // before ptt up closes the stream. No stuck-open: this runs whether
+        // the key was released here or in another app — the hotkey layer
+        // raises it on the physical key-up.
         _audio.StopMic();
+        try { await _lastAudioSend.WaitAsync(TimeSpan.FromMilliseconds(500)); }
+        catch (Exception) { /* best-effort flush; ptt up still closes the stream */ }
+
         FireAndForget(_client.SendPttAsync(false));
+        _tray.SetTransmitting(false);
+        Log($"[ptt] stream CLOSED after {DateTime.UtcNow - _pttHoldStart:g} — {_pttFrameCount} frames sent");
     }
 
     private static void OnWakePressed()
@@ -204,6 +237,7 @@ internal static class Program
 
         if (_pttActive)
         {
+            Interlocked.Increment(ref _pttFrameCount);
             EncodeAndSend(frame);
             return;
         }
@@ -251,9 +285,18 @@ internal static class Program
         try
         {
             var opus = _audioEncoder.EncodeFrame(frame);
-            FireAndForget(_client.SendAudioFrameAsync(opus));
+            var send = _client.SendAudioFrameAsync(opus);
+            _lastAudioSend = send;
+            FireAndForget(send);
         }
         catch { /* dropped frame — non-fatal */ }
+    }
+
+    /// <summary>Stream open/close + lifecycle lines: console (dev) and transcript.</summary>
+    private static void Log(string line)
+    {
+        Console.WriteLine(line);
+        _ui?.Post(_ => _form.AppendLine(line, Color.FromArgb(0, 131, 143)), null);
     }
 
     // Encoder is owned by the audio thread only (Concentus is not thread-safe).

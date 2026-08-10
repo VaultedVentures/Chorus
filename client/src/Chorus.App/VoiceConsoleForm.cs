@@ -26,6 +26,10 @@ public sealed class VoiceConsoleForm : Form
     private readonly Label _hintLabel;
     private readonly System.Windows.Forms.Timer _ringTimer;
 
+    private readonly string _pttHotkeyDisplay;
+    private readonly string _wakeHotkeyDisplay;
+    private readonly string _textSelectHotkeyDisplay;
+
     private DateTime _pendingEnd;
     private string _pendingVerdict = "";
     private bool _quitting;
@@ -33,11 +37,17 @@ public sealed class VoiceConsoleForm : Form
     /// <summary>Raised when the user clicks "Read Screen" in the console.</summary>
     public event Action? ReadScreenRequested;
 
-    public VoiceConsoleForm(ChorusClient client, SessionState state, TrayDaemon tray)
+    public VoiceConsoleForm(ChorusClient client, SessionState state, TrayDaemon tray,
+        string pttHotkeyDisplay = "Ctrl+Shift+Space",
+        string wakeHotkeyDisplay = "Win+Shift+W",
+        string textSelectHotkeyDisplay = "Win+Shift+R")
     {
         _client = client;
         _state = state;
         _tray = tray;
+        _pttHotkeyDisplay = pttHotkeyDisplay;
+        _wakeHotkeyDisplay = wakeHotkeyDisplay;
+        _textSelectHotkeyDisplay = textSelectHotkeyDisplay;
 
         Text = "CHORUS Voice Console";
         StartPosition = FormStartPosition.CenterScreen;
@@ -83,7 +93,7 @@ public sealed class VoiceConsoleForm : Form
             Font = new Font("Segoe UI Semibold", 13f),
             ForeColor = Color.White,
             BackColor = Color.FromArgb(120, 120, 120),
-            Text = "IDLE — Win+Shift+T to talk",
+            Text = $"IDLE — {_pttHotkeyDisplay} to talk",
         };
 
         // --- caption (last agent_text) ---
@@ -112,7 +122,7 @@ public sealed class VoiceConsoleForm : Form
         {
             Dock = DockStyle.Bottom,
             Height = 22,
-            Text = "Hold Win+Shift+T to talk  ·  Win+Shift+W wake  ·  Win+Shift+R reads screen text  ·  close hides to tray",
+            Text = $"Hold {_pttHotkeyDisplay} to talk  ·  {_wakeHotkeyDisplay} wake  ·  {_textSelectHotkeyDisplay} reads screen text  ·  close hides to tray",
             ForeColor = Color.FromArgb(130, 130, 130),
             Font = new Font("Segoe UI", 8.5f),
             TextAlign = ContentAlignment.MiddleLeft,
@@ -194,7 +204,7 @@ public sealed class VoiceConsoleForm : Form
         switch (state)
         {
             case "idle":
-                SetIndicator("IDLE — Win+Shift+T to talk", Color.FromArgb(120, 120, 120));
+                SetIndicator($"IDLE — {_pttHotkeyDisplay} to talk", Color.FromArgb(120, 120, 120));
                 _ringTimer.Stop();
                 break;
             case "listening":
@@ -265,7 +275,7 @@ public sealed class VoiceConsoleForm : Form
             // close = hide to tray (daemon owns the hotkeys and mic)
             e.Cancel = true;
             Hide();
-            _tray.ShowBalloon("CHORUS", "Still running in the tray — Win+Shift+T to talk.");
+            _tray.ShowBalloon("CHORUS", $"Still running in the tray — {_pttHotkeyDisplay} to talk.");
         }
     }
 

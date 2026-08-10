@@ -4,5 +4,8 @@
   "MicDevice": "",
   "StartHidden": true,
   "MicBufferMs": 20,
-  "ClientDevice": "desktop-win"
+  "ClientDevice": "desktop-win",
+  "PttHotkey": "Ctrl+Shift+Space",
+  "WakeHotkey": "Win+Shift+W",
+  "TextSelectHotkey": "Win+Shift+R"
 }

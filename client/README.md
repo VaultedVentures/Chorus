@@ -9,8 +9,10 @@ The CHORUS desktop SysTray voice client (Scott-approved two-surface design):
    speaking), captions, mute, agent selector, reconnect. Movable, resizable,
    pinnable (always-on-top), minimizable-to-tray. Closing hides to the tray.
 2. **SysTray daemon** — owns the global hotkeys, the mic, auto-reconnect and
-   status. Win+Shift+T = hold-to-talk, Win+Shift+W = wake window. Works from
-   ANY app, even with the console hidden.
+   status. **Ctrl+Shift+Space** = hold-to-talk, Win+Shift+W = wake window,
+   Win+Shift+R = read screen text. Works from ANY app, even with the console
+   hidden. All three combos are configurable via `chorus.json`
+   (`PttHotkey` / `WakeHotkey` / `TextSelectHotkey`).
 3. **Text Select (ScreenToTextToSpeech)** — Win+Shift+R (or tray "Read Screen
    Text" / console "Read Screen" button) dims the screen; click-drag a
    rectangle over any text/image; CHORUS OCRs the region with the built-in
@@ -77,6 +79,28 @@ override the file. Precedence: env var > config file > built-in default.
 | `StartHidden`   | `CHORUS_START_HIDDEN`| `true`                               | Start to tray with no main window (console via tray menu) |
 | `MicBufferMs`   | —                    | `20`                                 | Capture frame size (20 ms @ 16 kHz = 320 samples) |
 | `ClientDevice`  | —                    | `desktop-win`                        | Device id sent in the hello handshake |
+| `PttHotkey`     | `CHORUS_PTT_HOTKEY`  | `Ctrl+Shift+Space`                   | Hold-to-talk combo (global)    |
+| `WakeHotkey`    | `CHORUS_WAKE_HOTKEY` | `Win+Shift+W`                        | Wake-word window combo         |
+| `TextSelectHotkey`| `CHORUS_TEXT_SELECT_HOTKEY` | `Win+Shift+R`                 | Read-screen-text combo         |
+
+Hotkey syntax: one or more modifiers (`Ctrl`, `Alt`, `Shift`, `Win`) joined
+with `+`, then a key (`A`-`Z`, `0`-`9`, `F1`-`F24`, `Space`, `Tab`, `Enter`,
+`Esc`, `Home`, `End`, `PageUp`, `PageDown`, `Insert`, `Delete`, `Backspace`,
+arrows). At least one modifier is required. Invalid specs fall back to the
+default with a tray warning.
+
+## Push-to-talk behavior
+
+- Press and HOLD the PTT combo from any application — the mic opens, audio
+  streams to the gateway, the tray icon turns amber and the tooltip shows
+  "transmitting". Release to stop: the mic closes, in-flight frames are
+  flushed, and `ptt up` closes the stream.
+- The combo is registered at the OS level (`RegisterHotKey`), so it never
+  reaches the focused application.
+- Release is detected by polling the physical key state, so it works even if
+  you switch apps while holding; a 60 s watchdog force-releases a wedged key.
+- If another application already owns your chosen combo, CHORUS shows a tray
+  balloon naming the conflict — change `PttHotkey` in `chorus.json`.
 
 The session id is persisted as `session.id` next to the EXE so reconnects and
 restarts resume the same gateway session.

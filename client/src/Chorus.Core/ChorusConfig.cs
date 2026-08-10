@@ -22,7 +22,10 @@ public sealed record ChorusConfig(
     bool StartHidden,
     int MicBufferMs,
     string ClientDevice,
-    string? ConfigPath)
+    string? ConfigPath,
+    string PttHotkey = "Ctrl+Shift+Space",
+    string WakeHotkey = "Win+Shift+W",
+    string TextSelectHotkey = "Win+Shift+R")
 {
     public const string FileName = "chorus.json";
 
@@ -33,7 +36,34 @@ public sealed record ChorusConfig(
         StartHidden: true,      // start to the tray, console on demand
         MicBufferMs: 20,        // 20 ms frames @ 16 kHz = 320 samples
         ClientDevice: "desktop-win",
-        ConfigPath: null);
+        ConfigPath: null,
+        PttHotkey: "Ctrl+Shift+Space",   // hold-to-talk (global, works from any app)
+        WakeHotkey: "Win+Shift+W",       // wake-word window
+        TextSelectHotkey: "Win+Shift+R"); // read screen text
+
+    /// <summary>Parsed PTT binding; invalid config falls back to the default.</summary>
+    public HotkeyBinding PttBinding => HotkeyBinding.Parse(PttHotkey).IsValid
+        ? HotkeyBinding.Parse(PttHotkey)
+        : HotkeyBinding.Parse("Ctrl+Shift+Space");
+
+    /// <summary>Parsed wake binding; invalid config falls back to the default.</summary>
+    public HotkeyBinding WakeBinding => HotkeyBinding.Parse(WakeHotkey).IsValid
+        ? HotkeyBinding.Parse(WakeHotkey)
+        : HotkeyBinding.Parse("Win+Shift+W");
+
+    /// <summary>Parsed text-select binding; invalid config falls back to the default.</summary>
+    public HotkeyBinding TextSelectBinding => HotkeyBinding.Parse(TextSelectHotkey).IsValid
+        ? HotkeyBinding.Parse(TextSelectHotkey)
+        : HotkeyBinding.Parse("Win+Shift+R");
+
+    /// <summary>Human-readable PTT combo, e.g. "Ctrl+Shift+Space".</summary>
+    public string PttHotkeyDisplay => PttBinding.Display;
+
+    /// <summary>Human-readable wake combo, e.g. "Win+Shift+W".</summary>
+    public string WakeHotkeyDisplay => WakeBinding.Display;
+
+    /// <summary>Human-readable text-select combo, e.g. "Win+Shift+R".</summary>
+    public string TextSelectHotkeyDisplay => TextSelectBinding.Display;
 
     /// <summary>Env override names, in the order the loader applies them.</summary>
     public static readonly (string Env, string Field)[] EnvOverrides =
@@ -42,6 +72,9 @@ public sealed record ChorusConfig(
         ("CHORUS_AGENT", nameof(Agent)),
         ("CHORUS_DEVICE", nameof(MicDevice)),
         ("CHORUS_START_HIDDEN", nameof(StartHidden)),
+        ("CHORUS_PTT_HOTKEY", nameof(PttHotkey)),
+        ("CHORUS_WAKE_HOTKEY", nameof(WakeHotkey)),
+        ("CHORUS_TEXT_SELECT_HOTKEY", nameof(TextSelectHotkey)),
     };
 
     /// <summary>
@@ -104,11 +137,20 @@ public sealed record ChorusConfig(
         string? agent = Environment.GetEnvironmentVariable("CHORUS_AGENT");
         string? device = Environment.GetEnvironmentVariable("CHORUS_DEVICE");
         string? hidden = Environment.GetEnvironmentVariable("CHORUS_START_HIDDEN");
+        string? ptt = Environment.GetEnvironmentVariable("CHORUS_PTT_HOTKEY");
+        string? wake = Environment.GetEnvironmentVariable("CHORUS_WAKE_HOTKEY");
+        string? textSelect = Environment.GetEnvironmentVariable("CHORUS_TEXT_SELECT_HOTKEY");
 
         if (url is not null && url.Length > 0) cfg = cfg with { GatewayUrl = url };
         if (agent is not null && agent.Length > 0) cfg = cfg with { Agent = agent };
         if (device is not null) cfg = cfg with { MicDevice = device };
         if (hidden is not null && bool.TryParse(hidden, out bool h)) cfg = cfg with { StartHidden = h };
+        if (ptt is not null && ptt.Length > 0 && HotkeyBinding.TryParse(ptt, out _))
+            cfg = cfg with { PttHotkey = ptt };
+        if (wake is not null && wake.Length > 0 && HotkeyBinding.TryParse(wake, out _))
+            cfg = cfg with { WakeHotkey = wake };
+        if (textSelect is not null && textSelect.Length > 0 && HotkeyBinding.TryParse(textSelect, out _))
+            cfg = cfg with { TextSelectHotkey = textSelect };
         return cfg;
     }
 

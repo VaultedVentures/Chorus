@@ -50,7 +50,7 @@ public sealed class ConnectionManager
 
                 _settings.SaveSessionId(_client.SessionId);
                 _form.SetConnection($"connected · {_settings.GatewayUrl}");
-                _tray.ShowBalloon("CHORUS", "Connected. Hold Win+Shift+T to talk.");
+                _tray.ShowBalloon("CHORUS", $"Connected. Hold {_settings.PttHotkeyDisplay} to talk.");
 
                 var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
                 void OnFail(Exception _) => tcs.TrySetResult();
