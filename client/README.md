@@ -47,6 +47,13 @@ dotnet run --project tests/Chorus.Smoke -- --url ws://2.28.14.119:8765/v1/sessio
 dotnet run --project tests/Chorus.Smoke -- --wav test-input-16k-mono.wav   # full PTT exchange
 ```
 
+> Linux note: the Concentus native loader dlopens `libopus.so` directly (it does
+> not follow the .NET `runtimes/<rid>/native/` convention). On Linux, put
+> `libopus.so` on the loader path (`LD_LIBRARY_PATH=.../runtimes/linux-x64/native`
+> or `/usr/lib`) or the smoke falls back to the managed decoder, which decodes
+> low-bitrate 24 kHz frames to near-silence. On Windows, `build.sh` copies
+> `opus.dll` next to `Chorus.exe` — that is what the runtime loader finds.
+
 ## Config
 
 | Env var      | Default                                  | Meaning                  |
