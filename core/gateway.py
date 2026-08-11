@@ -161,6 +161,10 @@ class Session:
                 await self.send_json({"type": "audio", "seq": self._seq, "agent": self.agent_id})
                 self._seq += 1
                 await self.ws.send(op)
+                # Pace to real-time (20ms of audio per frame) so the client's
+                # playback buffer drains at consumption rate instead of
+                # overflowing and dropping the tail of long replies.
+                await asyncio.sleep(frame_ms / 1000.0)
                 if self.machine.state != TurnState.SPEAKING:
                     break  # barge-in stopped playback
         except Exception as e:

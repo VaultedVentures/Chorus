@@ -38,7 +38,7 @@ class FasterWhisperStt(SttProvider):
     """Self-hosted faster-whisper (int8) — the v1 default."""
     name = "faster-whisper"
 
-    def __init__(self, model_size: str = "base", device: str = "cpu",
+    def __init__(self, model_size: str = "small", device: str = "cpu",
                  compute_type: str = "int8"):
         self.model_size = model_size
         self.device = device
