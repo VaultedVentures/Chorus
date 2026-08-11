@@ -78,4 +78,37 @@ public class HotkeyBindingTests
         var b = HotkeyBinding.Parse("Ctrl+Shift+Space");
         Assert.Equal(0u, b.Modifiers & HotkeyBinding.ModNoRepeat);
     }
+
+    [Theory]
+    [InlineData("Win+Alt", HotkeyBinding.ModWin | HotkeyBinding.ModAlt, "Win+Alt")]
+    [InlineData("Alt+Win", HotkeyBinding.ModWin | HotkeyBinding.ModAlt, "Win+Alt")]   // canonical order
+    [InlineData("ctrl+shift", HotkeyBinding.ModControl | HotkeyBinding.ModShift, "Ctrl+Shift")]
+    [InlineData("Win+Ctrl", HotkeyBinding.ModWin | HotkeyBinding.ModControl, "Win+Ctrl")]
+    public void Parse_ModifierOnlyChord(string spec, uint expectedMods, string expectedDisplay)
+    {
+        Assert.True(HotkeyBinding.TryParse(spec, out var b));
+        Assert.True(b.IsValid);
+        Assert.True(b.IsChord);
+        Assert.Equal(0u, b.VirtualKey);          // no key — hook-detected
+        Assert.Equal(expectedMods, b.Modifiers);
+        Assert.Equal(expectedDisplay, b.Display);
+    }
+
+    [Theory]
+    [InlineData("Win")]        // single modifier — would fire constantly
+    [InlineData("Alt")]
+    [InlineData("Ctrl")]
+    [InlineData("Shift")]
+    [InlineData("Win+Alt+Space")]  // chord + key = normal combo, NOT a chord (key wins)
+    public void Parse_ChordRequiresTwoModifiers(string spec)
+    {
+        var b = HotkeyBinding.Parse(spec);
+        if (spec.Contains("+") && !spec.Contains("Space"))
+        {
+            Assert.False(b.IsValid);   // single modifier is invalid
+            return;
+        }
+        Assert.False(b.IsChord);       // chord+key is a regular combo
+        Assert.Equal(b.VirtualKey != 0, b.IsValid);
+    }
 }

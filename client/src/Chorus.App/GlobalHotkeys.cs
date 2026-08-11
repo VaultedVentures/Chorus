@@ -4,18 +4,20 @@ using Chorus.Core;
 namespace Chorus.App;
 
 /// <summary>
-/// Global hotkeys via RegisterHotKey. Hotkey specs are configurable
-/// (chorus.json PttHotkey/WakeHotkey/TextSelectHotkey, e.g. "Ctrl+Shift+Space",
+/// Global hotkeys. Hotkey specs are configurable (chorus.json
+/// PttHotkey/WakeHotkey/TextSelectHotkey, e.g. "Ctrl+Shift+Space",
 /// "Win+Shift+W", "Win+Shift+R"); parsing/validation lives in
 /// Chorus.Core.HotkeyBinding so it is unit-testable. Works from ANY app, even
-/// when the console window is hidden to the tray, and the combo never reaches
-/// the focused application (RegisterHotKey consumes it at the OS level).
+/// when the console window is hidden to the tray.
 ///
-/// Hold-to-talk: RegisterHotKey fires once per press (MOD_NOREPEAT). On the
-/// press we start the hold and poll the physical key state on a 25 ms timer;
-/// when the key goes up — no matter which app has focus — we fire the
-/// release. A 60 s watchdog force-releases if the key state is ever wedged,
-/// so the stream can never be left open.
+/// Key+modifier combos use RegisterHotKey (consumed at the OS level).
+/// MODIFIER-ONLY CHORDS (e.g. Win+Alt) cannot be registered by RegisterHotKey
+/// — they are detected by polling the physical modifier keys on the hold
+/// timer (Handy-style two-key push-to-talk).
+///
+/// Hold-to-talk: the press starts the hold; the poll timer owns release
+/// detection (25 ms) — when the key/chord goes up, no matter which app has
+/// focus, we fire the release. A 60 s watchdog force-releases if wedged.
 /// </summary>
 public sealed class GlobalHotkeys : NativeWindow, IDisposable
 {
@@ -24,6 +26,11 @@ public sealed class GlobalHotkeys : NativeWindow, IDisposable
     private const int PttId = 1;
     private const int WakeId = 2;
     private const int TextSelectId = 3;
+
+    // Modifier virtual-key codes for chord polling (RegisterHotKey can't do
+    // modifier-only combos; Handy-style chords are detected by key state).
+    private const int VkLWin = 0x5B, VkRWin = 0x5C;
+    private const int VkControl = 0x11, VkMenu = 0x12, VkShift = 0x10;
 
     /// <summary>Force-release if a hold exceeds this (belt-and-braces).</summary>
     private static readonly TimeSpan MaxHold = TimeSpan.FromSeconds(60);
@@ -77,10 +84,19 @@ public sealed class GlobalHotkeys : NativeWindow, IDisposable
             RegistrationFailed?.Invoke($"Wake hotkey {_wake.Display} is already in use by another app");
         if (!TryRegister(hwnd, TextSelectId, _textSelect))
             RegistrationFailed?.Invoke($"Text-select hotkey {_textSelect.Display} is already in use by another app");
+
+        // Modifier-only chord PTT: RegisterHotKey can't hold it — the poll
+        // timer becomes the detector (starts immediately, runs forever).
+        if (_ptt.IsChord)
+            _holdTimer.Start();
     }
 
-    private static bool TryRegister(IntPtr hwnd, int id, HotkeyBinding binding) =>
-        binding.IsValid && RegisterHotKey(hwnd, id, binding.Modifiers | ModNoRepeat, binding.VirtualKey);
+    private static bool TryRegister(IntPtr hwnd, int id, HotkeyBinding binding)
+    {
+        // Chords (modifier-only) are hook/poll-driven; skip RegisterHotKey.
+        if (binding.IsChord) return true;
+        return binding.IsValid && RegisterHotKey(hwnd, id, binding.Modifiers | ModNoRepeat, binding.VirtualKey);
+    }
 
     protected override void WndProc(ref Message m)
     {
@@ -105,6 +121,21 @@ public sealed class GlobalHotkeys : NativeWindow, IDisposable
         base.WndProc(ref m);
     }
 
+    /// <summary>True while ALL modifiers of a chord are physically down.</summary>
+    private bool ChordHeld(HotkeyBinding chord)
+    {
+        uint mods = chord.Modifiers;
+        if ((mods & HotkeyBinding.ModWin) != 0)
+        {
+            bool win = (GetAsyncKeyState(VkLWin) & 0x8000) != 0 || (GetAsyncKeyState(VkRWin) & 0x8000) != 0;
+            if (!win) return false;
+        }
+        if ((mods & HotkeyBinding.ModControl) != 0 && (GetAsyncKeyState(VkControl) & 0x8000) == 0) return false;
+        if ((mods & HotkeyBinding.ModAlt) != 0 && (GetAsyncKeyState(VkMenu) & 0x8000) == 0) return false;
+        if ((mods & HotkeyBinding.ModShift) != 0 && (GetAsyncKeyState(VkShift) & 0x8000) == 0) return false;
+        return true;
+    }
+
     private void BeginHold()
     {
         if (_pttDown) return; // double-press guard
@@ -116,6 +147,27 @@ public sealed class GlobalHotkeys : NativeWindow, IDisposable
 
     private void PollHold()
     {
+        bool overMax = DateTime.UtcNow - _holdStart > MaxHold;
+
+        if (_ptt.IsChord)
+        {
+            // Chord detector: press when the chord goes down, release on up.
+            bool held = ChordHeld(_ptt);
+            if (held && !_pttDown)
+                BeginHold();
+            else if (!held && _pttDown)
+            {
+                _pttDown = false;
+                PttReleased?.Invoke();
+            }
+            else if (_pttDown && overMax)
+            {
+                _pttDown = false;
+                PttReleased?.Invoke();
+            }
+            return;
+        }
+
         if (!_pttDown)
         {
             _holdTimer.Stop();
@@ -125,7 +177,6 @@ public sealed class GlobalHotkeys : NativeWindow, IDisposable
         // Physical key state — works even when another app has focus, and even
         // if the key was released while a different window was active.
         bool keyDown = (GetAsyncKeyState((int)_ptt.VirtualKey) & 0x8000) != 0;
-        bool overMax = DateTime.UtcNow - _holdStart > MaxHold;
 
         if (!keyDown || overMax)
         {

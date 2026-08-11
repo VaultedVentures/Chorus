@@ -10,6 +10,12 @@ namespace Chorus.Core;
 /// (Space, Tab, Enter, Esc, Home, End, PageUp, PageDown, Insert, Delete,
 /// Backspace, Up, Down, Left, Right).
 ///
+/// A MODIFIER-ONLY CHORD (two or more modifiers, no key) is also legal:
+///   Win+Alt, Ctrl+Shift, Win+Ctrl
+/// Windows' RegisterHotKey cannot register a bare modifier chord, so the
+/// app layer detects those with a low-level keyboard hook instead
+/// (IsChord). This is how Handy-style two-key push-to-talk works.
+///
 /// At least one modifier is required — a bare key as a GLOBAL hotkey would
 /// hijack that key for every application, which is almost never intended.
 ///
@@ -25,7 +31,10 @@ public sealed record HotkeyBinding(uint Modifiers, uint VirtualKey, string Displ
     public const uint ModWin = 0x0008;
     public const uint ModNoRepeat = 0x4000; // RegisterHotKey modifier, not part of a spec
 
-    public bool IsValid => Modifiers != 0 && VirtualKey != 0;
+    public bool IsValid => Modifiers != 0 && (VirtualKey != 0 || IsChord);
+
+    /// <summary>Modifier-only chord (e.g. Win+Alt) — needs a keyboard hook, not RegisterHotKey.</summary>
+    public bool IsChord => Modifiers != 0 && VirtualKey == 0;
 
     /// <summary>Parse a spec. Invalid/unknown specs yield an invalid binding (never throws).</summary>
     public static HotkeyBinding Parse(string? spec)
@@ -42,7 +51,7 @@ public sealed record HotkeyBinding(uint Modifiers, uint VirtualKey, string Displ
             return false; // empty modifier/key slot
 
         var parts = spec.Split('+', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
-        if (parts.Length < 2) return false; // need at least one modifier + a key
+        if (parts.Length < 2) return false; // need at least one modifier + a key (or a 2-modifier chord)
 
         uint mods = 0;
         string? keyToken = null;
@@ -62,9 +71,20 @@ public sealed record HotkeyBinding(uint Modifiers, uint VirtualKey, string Displ
             }
         }
 
-        if (mods == 0 || keyToken is null) return false;
-        if (!TryMapKey(keyToken, out uint vk, out string keyDisplay)) return false;
+        if (mods == 0) return false;
 
+        if (keyToken is null)
+        {
+            // Modifier-only chord: require at least two distinct modifiers
+            // (a bare single modifier would fire constantly and hijack the key).
+            int count = 0;
+            for (uint m = mods; m != 0; m &= m - 1) count++;
+            if (count < 2) return false;
+            binding = new HotkeyBinding(mods, 0, BuildDisplay(mods, ""));
+            return true;
+        }
+
+        if (!TryMapKey(keyToken, out uint vk, out string keyDisplay)) return false;
         binding = new HotkeyBinding(mods, vk, BuildDisplay(mods, keyDisplay));
         return true;
     }
@@ -77,7 +97,7 @@ public sealed record HotkeyBinding(uint Modifiers, uint VirtualKey, string Displ
         if ((mods & ModControl) != 0) parts.Add("Ctrl");
         if ((mods & ModAlt) != 0) parts.Add("Alt");
         if ((mods & ModShift) != 0) parts.Add("Shift");
-        parts.Add(keyDisplay);
+        if (keyDisplay.Length > 0) parts.Add(keyDisplay);
         return string.Join("+", parts);
     }
 
