@@ -98,6 +98,17 @@ class Session:
                 text = ""
             if text:
                 await self.send_json({"type": "final", "text": text})
+                # Interpretation layer: reconstruct intended words from
+                # context (fixes accent/misrecognition mangling).
+                agent = self.agents.get(self.agent_id)
+                if agent is not None:
+                    try:
+                        corrected = await agent.handler.correct_transcript(text, self._transcript)
+                    except Exception:
+                        corrected = text
+                    if corrected and corrected != text:
+                        await self.send_json({"type": "corrected", "text": corrected})
+                        text = corrected
                 self._transcript.append({"role": "user", "text": text})
         else:
             text = final_text or ""
@@ -130,7 +141,7 @@ class Session:
 
         agent = self.agents.get(self.agent_id)
         try:
-            reply = await agent.handler.reply(text, self.session_id)
+            reply = await agent.handler.reply(text, self.session_id, self._transcript)
         except Exception as e:
             await self.send_error("internal", f"agent failed: {e}")
             self.machine.cancel()
