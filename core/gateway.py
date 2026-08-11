@@ -228,7 +228,7 @@ class Gateway:
     def _new_session_id(self) -> str:
         return uuid.uuid4().hex
 
-    async def handler(self, ws: WebSocketServerProtocol) -> None:
+    async def handler(self, ws: WebSocketServerProtocol, path: str | None = None) -> None:
         session = None
         try:
             async for raw in ws:

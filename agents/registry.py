@@ -52,7 +52,7 @@ class HermesAdapter:
                         {"role": "system", "content": self.system},
                         {"role": "user", "content": transcript},
                     ],
-                    "temperature": 0.7,
+                    "temperature": 1,
                     "max_tokens": 300,
                 },
             )
