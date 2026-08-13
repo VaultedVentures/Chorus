@@ -22,10 +22,10 @@ public sealed class TextSelectController : IDisposable
     private TextSelectOverlayForm? _overlay;
     private bool _disposed;
 
-    public TextSelectController(VoiceConsoleForm form, TrayDaemon tray)
+    public TextSelectController(VoiceConsoleForm form, TrayDaemon tray, string? voiceName = null)
     {
         _ocr = new WindowsOcrReader();
-        _speech = new SapiSpeechSynthesizer();
+        _speech = new SapiSpeechSynthesizer(voiceName);
         _form = form;
         _tray = tray;
     }

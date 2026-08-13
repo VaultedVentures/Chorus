@@ -21,6 +21,7 @@ public sealed class VoiceConsoleForm : Form
     private readonly CheckBox _wakeCheck;
     private readonly Button _reconnectButton;
     private readonly Button _readScreenButton;
+    private readonly Button _readClipboardButton;
     private readonly Label _turnIndicator;
     private readonly RichTextBox _transcript;
     private readonly Label _captionLabel;
@@ -30,6 +31,7 @@ public sealed class VoiceConsoleForm : Form
     private readonly string _pttHotkeyDisplay;
     private readonly string _wakeHotkeyDisplay;
     private readonly string _textSelectHotkeyDisplay;
+    private readonly string _clipboardHotkeyDisplay;
 
     private DateTime _pendingEnd;
     private string _pendingVerdict = "";
@@ -37,6 +39,9 @@ public sealed class VoiceConsoleForm : Form
 
     /// <summary>Raised when the user clicks "Read Screen" in the console.</summary>
     public event Action? ReadScreenRequested;
+
+    /// <summary>Raised when the user clicks "Read Clipboard" in the console.</summary>
+    public event Action? ReadClipboardRequested;
 
     /// <summary>Raised when the user toggles the "Wake" checkbox (continuous wake-word listening).</summary>
     public event Action<bool>? WakeToggleRequested;
@@ -46,7 +51,8 @@ public sealed class VoiceConsoleForm : Form
         string wakeHotkeyDisplay = "Win+Shift+W",
         string textSelectHotkeyDisplay = "Win+Shift+R",
         bool wakeEnabled = true,
-        string wakePhrase = "hey chorus")
+        string wakePhrase = "hey chorus",
+        string clipboardHotkeyDisplay = "Win+Shift+C")
     {
         _client = client;
         _state = state;
@@ -54,6 +60,7 @@ public sealed class VoiceConsoleForm : Form
         _pttHotkeyDisplay = pttHotkeyDisplay;
         _wakeHotkeyDisplay = wakeHotkeyDisplay;
         _textSelectHotkeyDisplay = textSelectHotkeyDisplay;
+        _clipboardHotkeyDisplay = clipboardHotkeyDisplay;
 
         Text = "CHORUS Voice Console";
         StartPosition = FormStartPosition.CenterScreen;
@@ -63,8 +70,9 @@ public sealed class VoiceConsoleForm : Form
 
         // --- top bar: connection + agent + actions ---
         var top = new TableLayoutPanel { Dock = DockStyle.Top, Height = 40, Padding = new Padding(8, 6, 8, 2) };
-        top.ColumnCount = 7;
+        top.ColumnCount = 8;
         top.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        top.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         top.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         top.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         top.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
@@ -85,6 +93,8 @@ public sealed class VoiceConsoleForm : Form
         _reconnectButton.Click += (_, _) => _state.ReconnectRequested = true;
         _readScreenButton = new Button { Text = "Read Screen", AutoSize = true, Anchor = AnchorStyles.Right };
         _readScreenButton.Click += (_, _) => ReadScreenRequested?.Invoke();
+        _readClipboardButton = new Button { Text = "Read Clipboard", AutoSize = true, Anchor = AnchorStyles.Right };
+        _readClipboardButton.Click += (_, _) => ReadClipboardRequested?.Invoke();
 
         top.Controls.Add(_connectionLabel, 0, 0);
         top.Controls.Add(_agentCombo, 1, 0);
@@ -92,7 +102,8 @@ public sealed class VoiceConsoleForm : Form
         top.Controls.Add(_muteCheck, 3, 0);
         top.Controls.Add(_wakeCheck, 4, 0);
         top.Controls.Add(_readScreenButton, 5, 0);
-        top.Controls.Add(_reconnectButton, 6, 0);
+        top.Controls.Add(_readClipboardButton, 6, 0);
+        top.Controls.Add(_reconnectButton, 7, 0);
 
         // --- turn indicator ---
         _turnIndicator = new Label
@@ -132,7 +143,7 @@ public sealed class VoiceConsoleForm : Form
         {
             Dock = DockStyle.Bottom,
             Height = 22,
-            Text = $"Hold {_pttHotkeyDisplay} to talk  ·  say \"{wakePhrase}\" or {_wakeHotkeyDisplay} to wake  ·  {_textSelectHotkeyDisplay} reads screen text  ·  close hides to tray",
+            Text = $"Hold {_pttHotkeyDisplay} to talk  ·  say \"{wakePhrase}\" or {_wakeHotkeyDisplay} to wake  ·  {_textSelectHotkeyDisplay} reads screen  ·  {_clipboardHotkeyDisplay} reads clipboard  ·  close hides to tray",
             ForeColor = Color.FromArgb(130, 130, 130),
             Font = new Font("Segoe UI", 8.5f),
             TextAlign = ContentAlignment.MiddleLeft,

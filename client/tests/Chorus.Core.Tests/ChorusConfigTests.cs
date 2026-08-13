@@ -370,4 +370,108 @@ public class ChorusConfigTests : IDisposable
         Assert.Equal(1200, back.WakeCooldownMs);
         Assert.Equal(60000, back.WakeSessionIdleMs);
     }
+
+    // -- clipboard reader + voice ------------------------------------------
+
+    [Fact]
+    public void Defaults_Include_ClipboardAndVoice()
+    {
+        var d = ChorusConfig.Default;
+        Assert.Equal("Win+Shift+C", d.ClipboardHotkey);
+        Assert.Equal("", d.VoiceName);
+        Assert.Equal("Win+Shift+C", d.ClipboardHotkeyDisplay);
+        Assert.True(d.ClipboardBinding.IsValid);
+        Assert.Equal(HotkeyBinding.ModWin | HotkeyBinding.ModShift, d.ClipboardBinding.Modifiers);
+        Assert.Equal(0x43u, d.ClipboardBinding.VirtualKey); // C
+    }
+
+    [Fact]
+    public void Old_Config_Without_ClipboardOrVoice_Keeps_Defaults()
+    {
+        // Backward compat: a chorus.json from an earlier build has no
+        // ClipboardHotkey/VoiceName fields — they must resolve to defaults.
+        File.WriteAllText(Path.Combine(_dir, "chorus.json"), """
+            {
+              "GatewayUrl": "ws://example.test:9999/v1/session",
+              "PttHotkey": "Alt+F9"
+            }
+            """);
+
+        var cfg = ChorusConfig.Load(_dir);
+        Assert.Equal("Win+Shift+C", cfg.ClipboardHotkey);
+        Assert.Equal("Win+Shift+C", cfg.ClipboardHotkeyDisplay);
+        Assert.Equal("", cfg.VoiceName);
+    }
+
+    [Fact]
+    public void Custom_ClipboardHotkey_And_Voice_Load_From_File()
+    {
+        File.WriteAllText(Path.Combine(_dir, "chorus.json"), """
+            {
+              "ClipboardHotkey": "Ctrl+Shift+V",
+              "VoiceName": "Microsoft Hazel Desktop"
+            }
+            """);
+
+        var cfg = ChorusConfig.Load(_dir);
+        Assert.Equal("Ctrl+Shift+V", cfg.ClipboardHotkeyDisplay);
+        Assert.Equal("Microsoft Hazel Desktop", cfg.VoiceName);
+    }
+
+    [Fact]
+    public void Invalid_ClipboardHotkey_Falls_Back_To_Default_Binding()
+    {
+        File.WriteAllText(Path.Combine(_dir, "chorus.json"), """
+            {
+              "ClipboardHotkey": "Banana"
+            }
+            """);
+
+        var cfg = ChorusConfig.Load(_dir);
+        Assert.Equal("Win+Shift+C", cfg.ClipboardHotkeyDisplay, ignoreCase: true);
+    }
+
+    [Fact]
+    public void Env_ClipboardHotkey_And_Voice_Override_File()
+    {
+        File.WriteAllText(Path.Combine(_dir, "chorus.json"), """
+            {
+              "ClipboardHotkey": "Ctrl+Shift+V",
+              "VoiceName": "file-voice"
+            }
+            """);
+
+        Environment.SetEnvironmentVariable("CHORUS_CLIPBOARD_HOTKEY", "Alt+Shift+C");
+        Environment.SetEnvironmentVariable("CHORUS_VOICE", "env-voice");
+        try
+        {
+            var cfg = ChorusConfig.Load(_dir);
+            Assert.Equal("Alt+Shift+C", cfg.ClipboardHotkeyDisplay);
+            Assert.Equal("env-voice", cfg.VoiceName);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("CHORUS_CLIPBOARD_HOTKEY", null);
+            Environment.SetEnvironmentVariable("CHORUS_VOICE", null);
+        }
+    }
+
+    [Fact]
+    public void Env_Invalid_ClipboardHotkey_Is_Ignored()
+    {
+        File.WriteAllText(Path.Combine(_dir, "chorus.json"), """
+            { "ClipboardHotkey": "Ctrl+Shift+V" }
+            """);
+
+        Environment.SetEnvironmentVariable("CHORUS_CLIPBOARD_HOTKEY", "not-a-hotkey");
+        try
+        {
+            var cfg = ChorusConfig.Load(_dir);
+            Assert.Equal("Ctrl+Shift+V", cfg.ClipboardHotkeyDisplay); // file value survives bad env
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("CHORUS_CLIPBOARD_HOTKEY", null);
+        }
+    }
 }

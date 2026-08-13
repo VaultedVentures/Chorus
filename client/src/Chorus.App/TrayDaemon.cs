@@ -17,6 +17,7 @@ public sealed class TrayDaemon : IDisposable
     public event Action? ShowConsoleRequested;
     public event Action? ReconnectRequested;
     public event Action? TextSelectRequested;
+    public event Action? ClipboardReadRequested;
     public event Action? QuitRequested;
 
     public TrayDaemon()
@@ -32,6 +33,7 @@ public sealed class TrayDaemon : IDisposable
         var menu = new ContextMenuStrip();
         menu.Items.Add("Show Console", null, (_, _) => ShowConsoleRequested?.Invoke());
         menu.Items.Add("Read Screen Text", null, (_, _) => TextSelectRequested?.Invoke());
+        menu.Items.Add("Read Clipboard", null, (_, _) => ClipboardReadRequested?.Invoke());
         menu.Items.Add("Reconnect", null, (_, _) => ReconnectRequested?.Invoke());
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Quit", null, (_, _) => QuitRequested?.Invoke());

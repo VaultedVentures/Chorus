@@ -1,18 +1,24 @@
 using System.Collections.Concurrent;
 using System.Speech.Synthesis;
+using Chorus.Core.Clipboard;
 
 namespace Chorus.App;
 
 /// <summary>
-/// Local text-to-speech for the Text Select feature via Windows SAPI
-/// (System.Speech). No gateway involvement — the read-aloud path is fully
-/// local, matching the card's "SAPI/Piper TTS" tech and the CHORUS "no
-/// gateway involvement" scope.
+/// Local text-to-speech for the Text Select and Clipboard Reader features
+/// via Windows SAPI (System.Speech). No gateway involvement — the read-aloud
+/// path is fully local, matching the card's "SAPI/Piper TTS" tech and the
+/// CHORUS "no gateway involvement" scope.
 ///
 /// A single dedicated STA thread owns the SpeechSynthesizer (SAPI is
 /// thread-affine); long selections are spoken in bounded chunks (see
 /// TtsChunker) because SAPI Speak() becomes unreliable past a few hundred
 /// chars (the ClipReader v1.1 incident).
+///
+/// Voice: when <paramref name="voiceName"/> is given (chorus.json
+/// VoiceName) that installed voice is selected; otherwise the best
+/// installed voice is auto-picked (SapiVoicePicker — prefers the Windows 11
+/// neural "Natural" voices, e.g. Hazel, over legacy desktop voices).
 /// </summary>
 public sealed class SapiSpeechSynthesizer : IDisposable
 {
@@ -20,10 +26,12 @@ public sealed class SapiSpeechSynthesizer : IDisposable
     private readonly BlockingCollection<ChunkJob> _queue = new();
     private readonly CancellationTokenSource _shutdown = new();
     private readonly object _gate = new();
+    private readonly string? _voiceName;
     private volatile bool _speaking;
 
-    public SapiSpeechSynthesizer()
+    public SapiSpeechSynthesizer(string? voiceName = null)
     {
+        _voiceName = voiceName;
         _worker = new Thread(WorkerLoop)
         {
             Name = "Chorus.SapiSpeech",
@@ -83,6 +91,14 @@ public sealed class SapiSpeechSynthesizer : IDisposable
         _synth = new SpeechSynthesizer();
         try
         {
+            SelectVoice();
+        }
+        catch (Exception)
+        {
+            // no usable voice — Speak() will still work with the default
+        }
+        try
+        {
             foreach (var job in _queue.GetConsumingEnumerable(_shutdown.Token))
             {
                 lock (_gate) _currentJob = job;
@@ -115,6 +131,20 @@ public sealed class SapiSpeechSynthesizer : IDisposable
         {
             // shutdown
         }
+    }
+
+    /// <summary>
+    /// Select the configured voice (exact/substring match) or auto-pick the
+    /// best installed voice. Runs on the worker thread once at startup.
+    /// </summary>
+    private void SelectVoice()
+    {
+        var installed = _synth!.GetInstalledVoices()
+            .Where(v => v.Enabled)
+            .Select(v => v.VoiceInfo.Name)
+            .ToArray();
+        var pick = SapiVoicePicker.PickBest(installed, _voiceName);
+        if (pick is not null) _synth.SelectVoice(pick);
     }
 
     private sealed class ChunkJob

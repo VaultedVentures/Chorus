@@ -26,6 +26,7 @@ public sealed class GlobalHotkeys : NativeWindow, IDisposable
     private const int PttId = 1;
     private const int WakeId = 2;
     private const int TextSelectId = 3;
+    private const int ClipboardId = 4;
 
     // Modifier virtual-key codes for chord polling (RegisterHotKey can't do
     // modifier-only combos; Handy-style chords are detected by key state).
@@ -41,6 +42,7 @@ public sealed class GlobalHotkeys : NativeWindow, IDisposable
     private readonly HotkeyBinding _ptt;
     private readonly HotkeyBinding _wake;
     private readonly HotkeyBinding _textSelect;
+    private readonly HotkeyBinding _clipboard;
     private readonly System.Windows.Forms.Timer _holdTimer;
     private DateTime _holdStart;
     private bool _pttDown;
@@ -49,6 +51,7 @@ public sealed class GlobalHotkeys : NativeWindow, IDisposable
     public event Action? PttReleased;
     public event Action? WakePressed;
     public event Action? TextSelectPressed;
+    public event Action? ClipboardPressed;
 
     /// <summary>Raised when a combo could not be registered (owned by another app).</summary>
     public event Action<string>? RegistrationFailed;
@@ -62,11 +65,12 @@ public sealed class GlobalHotkeys : NativeWindow, IDisposable
     [DllImport("user32.dll")]
     private static extern short GetAsyncKeyState(int vKey);
 
-    public GlobalHotkeys(HotkeyBinding ptt, HotkeyBinding wake, HotkeyBinding textSelect)
+    public GlobalHotkeys(HotkeyBinding ptt, HotkeyBinding wake, HotkeyBinding textSelect, HotkeyBinding clipboard)
     {
         _ptt = ptt;
         _wake = wake;
         _textSelect = textSelect;
+        _clipboard = clipboard;
         _holdTimer = new System.Windows.Forms.Timer { Interval = (int)PollInterval.TotalMilliseconds };
         _holdTimer.Tick += (_, _) => PollHold();
     }
@@ -74,6 +78,7 @@ public sealed class GlobalHotkeys : NativeWindow, IDisposable
     public string PttDisplay => _ptt.Display;
     public string WakeDisplay => _wake.Display;
     public string TextSelectDisplay => _textSelect.Display;
+    public string ClipboardDisplay => _clipboard.Display;
 
     public void Register(IntPtr hwnd)
     {
@@ -84,6 +89,8 @@ public sealed class GlobalHotkeys : NativeWindow, IDisposable
             RegistrationFailed?.Invoke($"Wake hotkey {_wake.Display} is already in use by another app");
         if (!TryRegister(hwnd, TextSelectId, _textSelect))
             RegistrationFailed?.Invoke($"Text-select hotkey {_textSelect.Display} is already in use by another app");
+        if (!TryRegister(hwnd, ClipboardId, _clipboard))
+            RegistrationFailed?.Invoke($"Clipboard-read hotkey {_clipboard.Display} is already in use by another app");
 
         // Modifier-only chord PTT: RegisterHotKey can't hold it — the poll
         // timer becomes the detector (starts immediately, runs forever).
@@ -116,6 +123,10 @@ public sealed class GlobalHotkeys : NativeWindow, IDisposable
             else if (id == TextSelectId)
             {
                 TextSelectPressed?.Invoke();
+            }
+            else if (id == ClipboardId)
+            {
+                ClipboardPressed?.Invoke();
             }
         }
         base.WndProc(ref m);
@@ -195,6 +206,7 @@ public sealed class GlobalHotkeys : NativeWindow, IDisposable
             UnregisterHotKey(Handle, PttId);
             UnregisterHotKey(Handle, WakeId);
             UnregisterHotKey(Handle, TextSelectId);
+            UnregisterHotKey(Handle, ClipboardId);
         }
         ReleaseHandle();
     }

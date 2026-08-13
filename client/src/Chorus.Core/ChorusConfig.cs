@@ -31,7 +31,9 @@ public sealed record ChorusConfig(
     bool WakeEnabled = true,
     float WakeSensitivity = 0.4f,
     int WakeCooldownMs = 2000,
-    int WakeSessionIdleMs = 45000)
+    int WakeSessionIdleMs = 45000,
+    string ClipboardHotkey = "Win+Shift+C",
+    string VoiceName = "")
 {
     public const string FileName = "chorus.json";
 
@@ -50,7 +52,9 @@ public sealed record ChorusConfig(
         WakeEnabled: true,               // continuous wake-word listening on startup
         WakeSensitivity: 0.4f,           // 0..1: higher triggers more easily
         WakeCooldownMs: 2000,            // min gap between wake triggers (ms)
-        WakeSessionIdleMs: 45000);       // wake session auto-closes after this silence
+        WakeSessionIdleMs: 45000,        // wake session auto-closes after this silence
+        ClipboardHotkey: "Win+Shift+C",  // read the clipboard aloud
+        VoiceName: "");                  // "" = auto-pick the best installed SAPI voice
 
     /// <summary>Parsed PTT binding; invalid config falls back to the default.</summary>
     public HotkeyBinding PttBinding => HotkeyBinding.Parse(PttHotkey).IsValid
@@ -67,6 +71,11 @@ public sealed record ChorusConfig(
         ? HotkeyBinding.Parse(TextSelectHotkey)
         : HotkeyBinding.Parse("Win+Shift+R");
 
+    /// <summary>Parsed clipboard-read binding; invalid config falls back to the default.</summary>
+    public HotkeyBinding ClipboardBinding => HotkeyBinding.Parse(ClipboardHotkey).IsValid
+        ? HotkeyBinding.Parse(ClipboardHotkey)
+        : HotkeyBinding.Parse("Win+Shift+C");
+
     /// <summary>Human-readable PTT combo, e.g. "Ctrl+Shift+Space".</summary>
     public string PttHotkeyDisplay => PttBinding.Display;
 
@@ -75,6 +84,9 @@ public sealed record ChorusConfig(
 
     /// <summary>Human-readable text-select combo, e.g. "Win+Shift+R".</summary>
     public string TextSelectHotkeyDisplay => TextSelectBinding.Display;
+
+    /// <summary>Human-readable clipboard-read combo, e.g. "Win+Shift+C".</summary>
+    public string ClipboardHotkeyDisplay => ClipboardBinding.Display;
 
     /// <summary>Wake-word engine settings assembled from the config fields.</summary>
     public WakeWordSettings WakeSettings => new(
@@ -99,6 +111,8 @@ public sealed record ChorusConfig(
         ("CHORUS_WAKE_SENSITIVITY", nameof(WakeSensitivity)),
         ("CHORUS_WAKE_COOLDOWN_MS", nameof(WakeCooldownMs)),
         ("CHORUS_WAKE_SESSION_IDLE_MS", nameof(WakeSessionIdleMs)),
+        ("CHORUS_CLIPBOARD_HOTKEY", nameof(ClipboardHotkey)),
+        ("CHORUS_VOICE", nameof(VoiceName)),
     };
 
     /// <summary>
@@ -182,6 +196,8 @@ public sealed record ChorusConfig(
         string? wakeSensitivity = Environment.GetEnvironmentVariable("CHORUS_WAKE_SENSITIVITY");
         string? wakeCooldown = Environment.GetEnvironmentVariable("CHORUS_WAKE_COOLDOWN_MS");
         string? wakeSessionIdle = Environment.GetEnvironmentVariable("CHORUS_WAKE_SESSION_IDLE_MS");
+        string? clipboardHotkey = Environment.GetEnvironmentVariable("CHORUS_CLIPBOARD_HOTKEY");
+        string? voice = Environment.GetEnvironmentVariable("CHORUS_VOICE");
 
         if (url is not null && url.Length > 0) cfg = cfg with { GatewayUrl = url };
         if (agent is not null && agent.Length > 0) cfg = cfg with { Agent = agent };
@@ -203,6 +219,10 @@ public sealed record ChorusConfig(
             cfg = cfg with { WakeCooldownMs = Math.Max(0, wc) };
         if (wakeSessionIdle is not null && int.TryParse(wakeSessionIdle, out int wsi))
             cfg = cfg with { WakeSessionIdleMs = Math.Max(0, wsi) };
+        if (clipboardHotkey is not null && clipboardHotkey.Length > 0 && HotkeyBinding.TryParse(clipboardHotkey, out _))
+            cfg = cfg with { ClipboardHotkey = clipboardHotkey };
+        if (voice is not null && voice.Length > 0)
+            cfg = cfg with { VoiceName = voice };
         return cfg;
     }
 

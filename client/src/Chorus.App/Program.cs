@@ -41,6 +41,7 @@ internal static class Program
     private static TrayDaemon _tray = null!;
     private static SessionState _state = null!;
     private static TextSelectController _textSelect = null!;
+    private static ClipboardReaderController _clipboardReader = null!;
     private static TrayApplicationContext _appContext = null!;
     private static WakeWordEngine _wake = null!;
     private static SynchronizationContext? _ui;
@@ -90,7 +91,7 @@ internal static class Program
         _tray = new TrayDaemon();
         _form = new VoiceConsoleForm(_client, _state, _tray,
             settings.PttHotkeyDisplay, settings.WakeHotkeyDisplay, settings.TextSelectHotkeyDisplay,
-            settings.WakeEnabled, settings.WakePhrase);
+            settings.WakeEnabled, settings.WakePhrase, settings.ClipboardHotkeyDisplay);
         _appContext = new TrayApplicationContext(_form, settings.StartHidden);
 
         // The WinForms sync context is installed when the first control handle
@@ -99,7 +100,7 @@ internal static class Program
         // thread's message queue, which Application.Run pumps below.
         _ui = SynchronizationContext.Current ?? new WindowsFormsSynchronizationContext();
 
-        using var hotkeys = new GlobalHotkeys(settings.PttBinding, settings.WakeBinding, settings.TextSelectBinding);
+        using var hotkeys = new GlobalHotkeys(settings.PttBinding, settings.WakeBinding, settings.TextSelectBinding, settings.ClipboardBinding);
         _pttDisplay = settings.PttHotkeyDisplay;
         _wakeHotkeyDisplay = settings.WakeHotkeyDisplay;
         hotkeys.Register(_form.Handle);
@@ -107,13 +108,15 @@ internal static class Program
         hotkeys.PttReleased += OnPttReleased;
         hotkeys.WakePressed += OnWakePressed;
         hotkeys.TextSelectPressed += OnTextSelectPressed;
+        hotkeys.ClipboardPressed += OnClipboardReadPressed;
         hotkeys.RegistrationFailed += reason => _ui!.Post(_ =>
         {
             _tray.ShowBalloon("CHORUS — hotkey unavailable", reason);
             _form.AppendLine(reason, Color.FromArgb(190, 40, 40));
         }, null);
 
-        _textSelect = new TextSelectController(_form, _tray);
+        _textSelect = new TextSelectController(_form, _tray, settings.VoiceName);
+        _clipboardReader = new ClipboardReaderController(_form, _tray, settings.VoiceName);
 
         // Wake-word engine: continuous offline "hey chorus" spotting on the
         // mic frames. If the packaged model is missing/corrupt, degrade to
@@ -134,9 +137,11 @@ internal static class Program
         _tray.ShowConsoleRequested += () => _ui!.Post(_ => _appContext.ShowConsole(), null);
         _tray.ReconnectRequested += () => _state.ReconnectRequested = true;
         _tray.TextSelectRequested += () => _ui!.Post(_ => OnTextSelectPressed(), null);
+        _tray.ClipboardReadRequested += () => _ui!.Post(_ => OnClipboardReadPressed(), null);
         _tray.QuitRequested += () => _ui!.Post(_ => Shutdown(), null);
 
         _form.ReadScreenRequested += OnTextSelectPressed;
+        _form.ReadClipboardRequested += OnClipboardReadPressed;
         _form.WakeToggleRequested += enabled => _ui!.Post(_ => SetWakeEnabled(enabled), null);
 
         // Mic permission/device failures are surfaced clearly: tray balloon +
@@ -226,6 +231,7 @@ internal static class Program
     {
         if (_state.Muted) return;
         _textSelect.StopReading(); // user talking takes priority over screen reading
+        _clipboardReader.StopReading(); // and over clipboard reading
         if (_wakeActive)
         {
             // PTT takes over from a wake window: close the wake speech first.
@@ -271,6 +277,7 @@ internal static class Program
     {
         if (_state.Muted || _pttActive) return;
         _textSelect.StopReading(); // mic takes priority over screen reading
+        _clipboardReader.StopReading(); // and over clipboard reading
         _wakeActive = true;
         _vadInSpeech = false;
         _vadSilentFrames = 0;
@@ -290,6 +297,7 @@ internal static class Program
     {
         if (_state.Muted || _pttActive || _wakeActive) return;
         _textSelect.StopReading();
+        _clipboardReader.StopReading();
         _wakeActive = true;
         _vadInSpeech = false;
         _vadSilentFrames = 0;
@@ -347,6 +355,12 @@ internal static class Program
     {
         // Toggle: second press cancels the overlay or stops the reading.
         _textSelect.Toggle();
+    }
+
+    private static void OnClipboardReadPressed()
+    {
+        // Toggle: second press stops the reading.
+        _clipboardReader.Toggle();
     }
 
     // -- mic capture (NAudio thread) ---------------------------------------
@@ -449,6 +463,7 @@ internal static class Program
         _pttActive = false;
         _wakeActive = false;
         _textSelect.Dispose();
+        _clipboardReader.Dispose();
         _audio.StopMic();
         _form.Quit();
         // Application.Run(TrayApplicationContext) does NOT exit when the form
